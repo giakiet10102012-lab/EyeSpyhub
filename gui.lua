@@ -1,68 +1,89 @@
--- Chống phát hiện cơ bản bằng cách ngẫu nhiên hóa tên UI
-local uiName = "System_" .. math.random(1000, 9999)
+-- [[ CÀI ĐẶT HỆ THỐNG ]]
+local uiName = "Secure_UI_" .. math.random(1000, 9999)
 
--- Hàm che tên: "Gemini" -> "Ge***"
+-- Hàm che tên: "abcdxzy" -> "abc****"
 local function maskName(str)
     if #str <= 3 then return str end
     return string.sub(str, 1, 3) .. string.rep("*", #str - 3)
 end
 
-local playerName = game.Players.LocalPlayer.Name
-local displayNm = game.Players.LocalPlayer.DisplayName
-local maskedUser = maskName(playerName)
-local maskedDisplay = maskName(displayNm)
+local player = game.Players.LocalPlayer
+local maskedUser = maskName(player.Name)
+local maskedDisplay = maskName(player.DisplayName)
 
--- Khởi tạo GUI
+-- [[ KHỞI TẠO GIAO DIỆN ]]
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = uiName
--- Thử chèn vào nơi khó bị quét hơn
+-- Chèn vào CoreGui để tránh bị quét bởi một số Script quản lý của game
 local success, err = pcall(function()
     screenGui.Parent = game:GetService("CoreGui")
 end)
-if not success then screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui") end
+if not success then screenGui.Parent = player:WaitForChild("PlayerGui") end
 
+-- Khung chính
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 220, 0, 130)
+mainFrame.Size = UDim2.new(0, 240, 0, 140)
 mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
-mainFrame.Draggable = true 
+mainFrame.Draggable = true -- Có thể cầm kéo
 mainFrame.Parent = screenGui
 
--- Bo góc cho đẹp và hiện đại
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
+corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = mainFrame
 
--- Hiển thị tên đã che
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(1, -20, 0, 40)
-infoLabel.Position = UDim2.new(0, 10, 0, 5)
-infoLabel.BackgroundTransparency = 1
-infoLabel.Text = "Status: [PROTECTED]\nUser: " .. maskedDisplay .. " (@" .. maskedUser .. ")"
-infoLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-infoLabel.TextSize = 14
-infoLabel.TextWrapped = true
-infoLabel.Parent = mainFrame
+-- Nút Tắt Script (X)
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 25, 0, 25)
+closeButton.Position = UDim2.new(1, -30, 0, 5)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = Enum.Font.SourceSansBold
+closeButton.TextSize = 16
+closeButton.Parent = mainFrame
 
--- Ô nhập đơn cày
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 5)
+btnCorner.Parent = closeButton
+
+closeButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Hiển thị Tên (Đã che)
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Size = UDim2.new(1, -40, 0, 40)
+nameLabel.Position = UDim2.new(0, 12, 0, 5)
+nameLabel.BackgroundTransparency = 1
+nameLabel.Text = "Name: " .. maskedDisplay .. " (@" .. maskedUser .. ")"
+nameLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+nameLabel.TextSize = 14
+nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+nameLabel.Font = Enum.Font.GothamSemibold
+nameLabel.Parent = mainFrame
+
+-- Ô ghi chú đơn cày
 local noteBox = Instance.new("TextBox")
-noteBox.Size = UDim2.new(1, -20, 0, 60)
-noteBox.Position = UDim2.new(0, 10, 0, 55)
+noteBox.Size = UDim2.new(1, -24, 0, 70)
+noteBox.Position = UDim2.new(0, 12, 0, 55)
 noteBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-noteBox.PlaceholderText = "Ghi đơn cày tại đây..."
+noteBox.PlaceholderText = "Nhập thông tin đơn cày..."
 noteBox.Text = ""
 noteBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-noteBox.TextSize = 12
+noteBox.TextSize = 13
 noteBox.TextWrapped = true
+noteBox.TextYAlignment = Enum.TextYAlignment.Top
+noteBox.ClearTextOnFocus = false
 noteBox.Parent = mainFrame
 
 local boxCorner = Instance.new("UICorner")
 boxCorner.Parent = noteBox
 
 -----------------------------------------------------------
--- ANTI-BAN CƠ BẢN (CLIENT SIDE)
+-- ANTI-BAN & BYPASS (HOOKING)
 -----------------------------------------------------------
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
@@ -70,10 +91,9 @@ local oldNamecall = mt.__namecall
 
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
-    local args = {...}
     
-    -- Ngăn chặn gửi dữ liệu báo cáo về Server (chặn các RemoteEvent nghi vấn)
-    if method == "FireServer" and (tostring(self) == "ReportAbuse" or tostring(self):find("Detection")) then
+    -- Chặn các nỗ lực gửi báo cáo hoặc quét log từ game
+    if method == "FireServer" and (tostring(self) == "ReportAbuse" or tostring(self):find("Detection") or tostring(self):find("Log")) then
         return nil
     end
     
@@ -81,4 +101,4 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
-print("UI Loaded with Anti-Detection!")
+print("Script Loaded Successfully!")
