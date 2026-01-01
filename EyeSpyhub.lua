@@ -2,71 +2,72 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 
 -- [[ CẤU HÌNH EYESPYHUB ]]
 _G.AutoLevel = false
-_G.Distance = 10
-_G.FlySpeed = 300 -- Tốc độ bay tối đa theo yêu cầu của bạn
+_G.Distance = 12 -- Khoảng cách bay TRÊN đầu quái (An toàn nhất là 10-12)
+_G.FlySpeed = 300 
 
--- Hàm che tên bảo mật
 local function msk(s) return #s<=3 and s or s:sub(1,3)..string.rep("*",#s-3) end
 
--- Hàm di chuyển mượt mà (Tween) với tốc độ cố định
+-- Hàm di chuyển Tween tốc độ 300
 local function SmoothTween(targetCFrame)
-    local character = game.Players.LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootPart = character.HumanoidRootPart
+    local rootPart = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
     local distance = (rootPart.Position - targetCFrame.Position).Magnitude
-    local duration = distance / _G.FlySpeed -- Tính toán thời gian dựa trên tốc độ 300
-    
-    local tween = game:GetService("TweenService"):Create(rootPart, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
+    local tween = game:GetService("TweenService"):Create(rootPart, TweenInfo.new(distance / _G.FlySpeed, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
     tween:Play()
     return tween
 end
 
--- [[ KHỞI TẠO WINDOW ]]
+-- [[ GIAO DIỆN ]]
 local Window = Fluent:CreateWindow({
-    Title = "EyeSpyhub | Speed: " .. _G.FlySpeed,
-    SubTitle = "Partner: " .. msk(game.Players.LocalPlayer.Name),
+    Title = "EyeSpyhub | Safe Farm Mode",
+    SubTitle = "Tên: " .. msk(game.Players.LocalPlayer.Name),
     TabWidth = 160,
     Size = UDim2.fromOffset(550, 380),
     Acrylic = true,
     Theme = "Dark"
 })
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Chính", Icon = "home" }),
-}
+local Tabs = { Main = Window:AddTab({ Title = "Auto Farm", Icon = "rbxassetid://4483345998" }) }
 
-local LevelToggle = Tabs.Main:AddToggle("LevelToggle", {Title = "Bật Auto Farm Level (Speed 300)", Default = false })
-LevelToggle:OnChanged(function()
+Tabs.Main:AddToggle("LevelToggle", {Title = "Bật Auto Farm (Bay trên đầu quái)", Default = false }):OnChanged(function()
     _G.AutoLevel = Fluent.Options.LevelToggle.Value
 end)
 
--- [[ LOGIC VẬN HÀNH ]]
+-- [[ LOGIC VẬN HÀNH AN TOÀN ]]
 task.spawn(function()
     while task.wait() do
         if _G.AutoLevel then
             pcall(function()
                 local player = game.Players.LocalPlayer
-                local character = player.Character
+                local char = player.Character
                 
-                -- Tìm quái (Ví dụ đơn giản, bạn có thể kết hợp với hàm GetQuest trước đó)
+                -- Tìm quái mục tiêu (Ví dụ: đang đứng gần quái nào đánh quái đó hoặc theo tên)
                 for _, v in pairs(workspace.Enemies:GetChildren()) do
                     if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                         
-                        -- Di chuyển đến quái với tốc độ 300
-                        local targetPos = v.HumanoidRootPart.CFrame * CFrame.new(0, _G.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        local move = SmoothTween(targetPos)
+                        -- Tọa độ mục tiêu: Luôn nằm TRÊN HumanoidRootPart của quái 1 khoảng _G.Distance
+                        -- CFrame.Angles giúp nhân vật hướng mặt xuống dưới để đánh dễ hơn
+                        local safePos = v.HumanoidRootPart.CFrame * CFrame.new(0, _G.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                         
-                        -- Đợi cho đến khi đến nơi hoặc quái chết
-                        repeat 
-                            task.wait()
-                            -- Gom quái
+                        -- Di chuyển đến vị trí an toàn
+                        SmoothTween(safePos)
+                        
+                        repeat
+                            if not _G.AutoLevel or v.Humanoid.Health <= 0 then break end
+                            
+                            -- GIỮ VỊ TRÍ: Khóa vị trí nhân vật trên đầu quái liên tục
+                            char.HumanoidRootPart.CFrame = v.HumanoidRootPart.CFrame * CFrame.new(0, _G.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+                            
+                            -- GOM QUÁI & HITBOX: Quái đứng yên và to ra để dễ đánh trúng
                             v.HumanoidRootPart.CanCollide = false
+                            if v.HumanoidRootPart:FindFirstChild("BodyVelocity") then v.HumanoidRootPart.BodyVelocity:Destroy() end -- Chống quái bị văng
                             v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                             
-                            -- Auto Click
+                            -- AUTO CLICK
                             game:GetService("VirtualUser"):CaptureController()
                             game:GetService("VirtualUser"):Button1Down(Vector2.new(1280, 672))
+                            
+                            task.wait()
                         until v.Humanoid.Health <= 0 or not _G.AutoLevel
                     end
                 end
@@ -75,20 +76,14 @@ task.spawn(function()
     end
 end)
 
--- [[ BẢO MẬT ]]
+-- [[ CHỐNG PHÁT HIỆN ]]
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
 local old = mt.__namecall
 mt.__namecall = newcclosure(function(self, ...)
-    if getnamecallmethod() == "FireServer" and (tostring(self) == "AdminIT" or tostring(self):find("Detect")) then
-        return nil
-    end
+    if getnamecallmethod() == "FireServer" and (tostring(self) == "AdminIT" or tostring(self):find("Detect")) then return nil end
     return old(self, ...)
 end)
 setreadonly(mt, true)
 
-Fluent:Notify({
-    Title = "EyeSpyhub",
-    Content = "Tốc độ bay đã được giới hạn ở mức 300!",
-    Duration = 5
-})
+Fluent:Notify({ Title = "EyeSpyhub", Content = "Chế độ Bay trên đầu quái đã kích hoạt!", Duration = 5 })
