@@ -2,7 +2,7 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 
 -- [[ CẤU HÌNH EYESPYHUB ]]
 _G.AutoLevel = false
-_G.Distance = 12 -- Khoảng cách bay TRÊN đầu quái (An toàn nhất là 10-12)
+_G.Distance = 12 
 _G.FlySpeed = 300 
 
 local function msk(s) return #s<=3 and s or s:sub(1,3)..string.rep("*",#s-3) end
@@ -19,19 +19,48 @@ end
 
 -- [[ GIAO DIỆN ]]
 local Window = Fluent:CreateWindow({
-    Title = "EyeSpyhub | Safe Farm Mode",
-    SubTitle = "Tên: " .. msk(game.Players.LocalPlayer.Name),
+    Title = "EyeSpyhub | Blox Fruits",
+    SubTitle = "Partner: " .. msk(game.Players.LocalPlayer.Name),
     TabWidth = 160,
     Size = UDim2.fromOffset(550, 380),
     Acrylic = true,
     Theme = "Dark"
 })
 
-local Tabs = { Main = Window:AddTab({ Title = "Auto Farm", Icon = "rbxassetid://4483345998" }) }
+local Tabs = { 
+    Main = Window:AddTab({ Title = "Auto Farm", Icon = "rbxassetid://4483345998" }),
+    Control = Window:AddTab({ Title = "Hệ thống", Icon = "settings" })
+}
 
+-- [NÚT BẬT/TẮT TRONG TAB CHÍNH]
 Tabs.Main:AddToggle("LevelToggle", {Title = "Bật Auto Farm (Bay trên đầu quái)", Default = false }):OnChanged(function()
     _G.AutoLevel = Fluent.Options.LevelToggle.Value
 end)
+
+-- [NÚT TẮT HẲN SCRIPT TRONG TAB HỆ THỐNG]
+Tabs.Control:AddButton({
+    Title = "Tắt hoàn toàn Script",
+    Description = "Xóa giao diện và dừng tất cả hoạt động của EyeSpyhub",
+    Callback = function()
+        Window:Dialog({
+            Title = "Xác nhận",
+            Content = "Bạn có chắc chắn muốn tắt EyeSpyhub không?",
+            Buttons = {
+                {
+                    Title = "Xác nhận",
+                    Callback = function()
+                        _G.AutoLevel = false
+                        Fluent:Destroy() -- Xóa giao diện Fluent
+                    end
+                },
+                {
+                    Title = "Hủy",
+                    Callback = function() end
+                }
+            }
+        })
+    end
+})
 
 -- [[ LOGIC VẬN HÀNH AN TOÀN ]]
 task.spawn(function()
@@ -40,27 +69,21 @@ task.spawn(function()
             pcall(function()
                 local player = game.Players.LocalPlayer
                 local char = player.Character
-                
-                -- Tìm quái mục tiêu (Ví dụ: đang đứng gần quái nào đánh quái đó hoặc theo tên)
+                if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
                 for _, v in pairs(workspace.Enemies:GetChildren()) do
                     if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                        
-                        -- Tọa độ mục tiêu: Luôn nằm TRÊN HumanoidRootPart của quái 1 khoảng _G.Distance
-                        -- CFrame.Angles giúp nhân vật hướng mặt xuống dưới để đánh dễ hơn
                         local safePos = v.HumanoidRootPart.CFrame * CFrame.new(0, _G.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        
-                        -- Di chuyển đến vị trí an toàn
                         SmoothTween(safePos)
                         
                         repeat
-                            if not _G.AutoLevel or v.Humanoid.Health <= 0 then break end
+                            if not _G.AutoLevel or v.Humanoid.Health <= 0 or not Fluent.Unloaded == false then break end
                             
-                            -- GIỮ VỊ TRÍ: Khóa vị trí nhân vật trên đầu quái liên tục
+                            -- KHÓA VỊ TRÍ TRÊN ĐẦU QUÁI
                             char.HumanoidRootPart.CFrame = v.HumanoidRootPart.CFrame * CFrame.new(0, _G.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                             
-                            -- GOM QUÁI & HITBOX: Quái đứng yên và to ra để dễ đánh trúng
+                            -- GOM QUÁI & HITBOX
                             v.HumanoidRootPart.CanCollide = false
-                            if v.HumanoidRootPart:FindFirstChild("BodyVelocity") then v.HumanoidRootPart.BodyVelocity:Destroy() end -- Chống quái bị văng
                             v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                             
                             -- AUTO CLICK
@@ -86,4 +109,4 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
-Fluent:Notify({ Title = "EyeSpyhub", Content = "Chế độ Bay trên đầu quái đã kích hoạt!", Duration = 5 })
+Fluent:Notify({ Title = "EyeSpyhub", Content = "Script đã sẵn sàng cày thuê!", Duration = 5 })
