@@ -1,109 +1,133 @@
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local VIM = game:GetService("VirtualInputManager")
+-- Khởi tạo Thư viện GUI
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local Window = Library.CreateLib("EyeSpyhub - Sailor Piece (Bản Tự Chế)", "BloodTheme")
 
--- [[ CẤU HÌNH ]]
-_G.AutoLevel = false
-_G.Distance = 12 
-_G.FlySpeed = 300 
+-- TẠO CÁC TAB
+local MainTab = Window:NewTab("Auto Farm")
+local CombatTab = Window:NewTab("Chiến Đấu")
+local CreditTab = Window:NewTab("Thông Tin")
 
-local function msk(s) return #s<=3 and s or s:sub(1,3)..string.rep("*",#s-3) end
+-- ==========================================
+-- PHẦN 1: AUTO FARM (TAB CHÍNH)
+-- ==========================================
+local FarmSection = MainTab:NewSection("Cấu Hình Farm")
 
--- [[ HÀM TỰ ĐỘNG CẦM VŨ KHÍ ]]
-local function CheckAndEquip()
-    local player = game.Players.LocalPlayer
-    if not player.Character:FindFirstChildOfClass("Tool") then
-        for _, tool in pairs(player.Backpack:GetChildren()) do
-            if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
-                player.Character.Humanoid:EquipTool(tool)
-                break
-            end
-        end
-    end
-end
+local QuestTable = {
+    {Min = 8000, Max = 8999, NPC = "QuestNPC14", Pos = Vector3.new(-1124.75, 19.7, 371.23)},
+    {Min = 9000, Max = 9999, NPC = "QuestNPC15", Pos = Vector3.new(1072.546, 6.778, 1275.642)}, 
+    {Min = 10000, Max = 11499, NPC = "QuestNPC16", Pos = Vector3.new(-1274.657, 6.175, -1191.39)}, 
+    {Min = 11500, Max = 11999, NPC = "QuestNPC18", Pos = Vector3.new(-1876.007, 13.572, -738.603)}, 
+    {Min = 12000, Max = 100000, NPC = "QuestNPC19", Pos = Vector3.new(59.851, 5.579, 1816.135)}
+}
 
--- [[ GIAO DIỆN ]]
-local Window = Fluent:CreateWindow({
-    Title = "EyeSpyhub | Optimized Farm",
-    SubTitle = "Fixed Attack & Single Target",
-    TabWidth = 160, Size = UDim2.fromOffset(550, 380), Theme = "Dark"
-})
+_G.AutoFarm = false
+_G.CurrentQuest = "" 
 
-local Tabs = { Main = Window:AddTab({ Title = "Auto Farm", Icon = "home" }) }
-
-Tabs.Main:AddToggle("LevelToggle", {Title = "Bật Auto Farm (Single Target)", Default = false }):OnChanged(function()
-    _G.AutoLevel = Fluent.Options.LevelToggle.Value
-end)
-
--- [[ VÒNG LẶP CHÍNH ]]
-task.spawn(function()
-    while task.wait() do
-        if _G.AutoLevel then
-            pcall(function()
+FarmSection:NewToggle("Bật Auto Farm", "Tự động Xóa & Nhận Quest", function(state)
+    _G.AutoFarm = state
+    
+    if state then
+        _G.CurrentQuest = "" 
+        task.spawn(function()
+            while _G.AutoFarm do
+                task.wait(0.1)
+                
                 local player = game.Players.LocalPlayer
-                local character = player.Character
-                if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+                local myLv = player.Data.Level.Value
+                local targetNPC = nil
+                local targetPos = nil
 
-                -- TÌM 1 CON QUÁI DUY NHẤT (Gần nhất)
-                local targetMob = nil
-                local shortestDistance = math.huge
-
-                for _, v in pairs(workspace.Enemies:GetChildren()) do
-                    if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-                        local dist = (character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
-                        if dist < shortestDistance then
-                            shortestDistance = dist
-                            targetMob = v
-                        end
+                for _, v in pairs(QuestTable) do
+                    if myLv >= v.Min and myLv <= v.Max then
+                        targetNPC = v.NPC
+                        targetPos = v.Pos
+                        break
                     end
                 end
 
-                -- NẾU CÓ MỤC TIÊU
-                if targetMob then
-                    CheckAndEquip() -- Cầm vũ khí
-                    
-                    repeat
-                        if not _G.AutoLevel or not targetMob.Parent or targetMob.Humanoid.Health <= 0 then break end
-
-                        -- KHÓA VỊ TRÍ TRÊN ĐẦU
-                        character.HumanoidRootPart.CFrame = targetMob.HumanoidRootPart.CFrame * CFrame.new(0, _G.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        
-                        -- GOM QUÁI XUNG QUANH VÀO MỤC TIÊU CHÍNH
-                        targetMob.HumanoidRootPart.CanCollide = false
-                        targetMob.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
-                        
-                        -- THỰC HIỆN ĐÁNH (Gửi tín hiệu nhấn chuột thật)
-                        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                        
-                        -- Lệnh đánh dự phòng của Blox Fruits
-                        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Attack")
-                        
-                        task.wait(0.1) -- Tốc độ đánh
-                    until not _G.AutoLevel or targetMob.Humanoid.Health <= 0
+                -- Bước 2: Nhận/Đổi Quest
+                if targetNPC and _G.CurrentQuest ~= targetNPC then
+                    if _G.CurrentQuest ~= "" then
+                        game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAbandon"):FireServer("repeatable")
+                        task.wait(0.3)
+                    end
+                    game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(targetNPC)
+                    _G.CurrentQuest = targetNPC
                 end
-            end)
-        end
+
+                -- Bước 3: BAY ĐẾN ĐIỂM FARM (Vận tốc 300)
+                pcall(function()
+                    if targetPos and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        local root = player.Character.HumanoidRootPart
+                        local hum = player.Character.Humanoid
+                        local goalCFrame = CFrame.new(targetPos.X, targetPos.Y + 5, targetPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
+                        local distance = (root.Position - Vector3.new(targetPos.X, targetPos.Y + 5, targetPos.Z)).Magnitude
+                        
+                        if distance > 5 then
+                            local speed = 300
+                            local duration = distance / speed
+                            local tween = game:GetService("TweenService"):Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = goalCFrame})
+                            tween:Play()
+                        else
+                            root.CFrame = goalCFrame
+                        end
+                        
+                        root.Velocity = Vector3.new(0, 0, 0)
+                        hum.PlatformStand = true
+                        
+                        for _, part in pairs(player.Character:GetChildren()) do
+                            if part:IsA("BasePart") then part.CanCollide = false end
+                        end
+                    end
+                end)
+            end -- Kết thúc vòng lặp while
+        end) -- Kết thúc task.spawn
+    else
+        -- Khi tắt Auto Farm
+        pcall(function() game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false end)
     end
 end)
 
--- [[ CHỐNG PHÁT HIỆN ]]
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-local old = mt.__namecall
-mt.__namecall = newcclosure(function(self, ...)
-    if getnamecallmethod() == "FireServer" and (tostring(self) == "AdminIT" or tostring(self):find("Detect")) then return nil end
-    return old(self, ...)
+FarmSection:NewButton("Xóa Nhiệm Vụ Hiện Tại", "Gửi lệnh QuestAbandon", function()
+    game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAbandon"):FireServer("repeatable")
+    _G.CurrentQuest = ""
 end)
-setreadonly(mt, true)
 
--- Nút thu nhỏ
-local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-local ToggleBtn = Instance.new("TextButton", ScreenGui)
-ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
-ToggleBtn.Position = UDim2.new(0, 10, 0.5, 0)
-ToggleBtn.Text = "Eye"
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 150)
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
-ToggleBtn.MouseButton1Click:Connect(function() Window:Minimize() end)
+-- ==========================================
+-- PHẦN 2: CHIẾN ĐẤU
+-- ==========================================
+local CombatSection = CombatTab:NewSection("Kỹ Năng & Đánh")
 
-Fluent:Notify({ Title = "EyeSpyhub", Content = "Đã cập nhật hệ thống đánh và khóa mục tiêu!", Duration = 5 })
+_G.AutoClick = false
+CombatSection:NewToggle("Auto Click", "Tự động spam đánh", function(state)
+    _G.AutoClick = state
+    if state then
+        task.spawn(function()
+            while _G.AutoClick do
+                game:GetService("ReplicatedStorage"):WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer()
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+_G.AutoSkillZ = false
+CombatSection:NewToggle("Auto Skill Z", "Tự động dùng chiêu Z", function(state)
+    _G.AutoSkillZ = state
+    if state then
+        task.spawn(function()
+            while _G.AutoSkillZ do
+                game:GetService("ReplicatedStorage"):WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility"):FireServer(2)
+                task.wait(0.5)
+            end
+        end)
+    end
+end)
+
+-- ==========================================
+-- PHẦN 3: THÔNG TIN
+-- ==========================================
+local InfoSection = CreditTab:NewSection("EyeSpyhub v1.0")
+InfoSection:NewButton("Tác giả: EyeSpy", "Chúc bạn farm vui vẻ!", function()
+    print("Script đã sẵn sàng!")
+end)
