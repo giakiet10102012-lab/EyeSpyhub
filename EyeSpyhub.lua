@@ -205,3 +205,36 @@ Tabs.FixLag:AddInput("FPSCap", {
 
 Window:SelectTab(1)
 Fluent:Notify({Title = "EyeSpyhub", Content = "Script đã sẵn sàng!", Duration = 5})
+-- ==========================================
+-- NÚT BẬT/TẮT GIAO DIỆN (TOGGLE UI)
+-- ==========================================
+local FluentGui = game:GetService("CoreGui").ScreenGui -- Lấy ScreenGui của Fluent
+local ToggleButton = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+-- 1. Cấu hình vị trí và hình dáng nút
+ToggleButton.Name = "EyeSpyToggleButton"
+ToggleButton.Parent = game:GetService("CoreGui") -- Hiện trên màn hình điện thoại
+ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+ToggleButton.Position = UDim2.new(0.1, 0, 0.15, 0) -- Vị trí góc trên bên trái
+ToggleButton.Size = UDim2.new(0, 50, 0, 50) -- Kích thước nút 50x50
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Text = "EYE" -- Chữ hiển thị trên nút
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14
+ToggleButton.Draggable = true -- Bạn có thể kéo nút này đi bất cứ đâu trên màn hình
+
+UICorner.CornerRadius = UDim.new(0, 10) -- Bo góc nút cho đẹp
+UICorner.Parent = ToggleButton
+
+-- 2. Chức năng Bật/Tắt khi chạm vào nút
+ToggleButton.MouseButton1Click:Connect(function()
+    Window:Minimize() -- Hàm thu nhỏ/hiện lại của Fluent
+end)
+
+-- Thông báo cho người dùng
+Fluent:Notify({
+    Title = "EyeSpyhub",
+    Content = "Bạn có thể kéo nút 'EYE' để di chuyển vị trí bật/tắt menu!",
+    Duration = 5
+})
