@@ -216,53 +216,34 @@ Tabs.FixLag:AddInput("FPSCap", {
 Window:SelectTab(1)
 Fluent:Notify({Title = "EyeSpyhub", Content = "Script đã sẵn sàng!", Duration = 5})
 -- ==========================================
--- NÚT BẤM ẨN/HIỆN GUI (Dán ở cuối Script)
+-- NÚT BẤM CHO GIAO DIỆN FLUENT
 -- ==========================================
-local ScreenGui = Instance.new("ScreenGui")
-local ToggleButton = Instance.new("TextButton")
-local UICorner = Instance.new("UICorner")
+local FluentToggle = Instance.new("ScreenGui")
+local Button = Instance.new("TextButton")
+local Corner = Instance.new("UICorner")
 
--- Thiết lập để nút không bị mất khi nhân vật chết
-ScreenGui.Name = "EyeSpyToggleGui"
-ScreenGui.Parent = game:GetService("CoreGui")
-ScreenGui.ResetOnSpawn = false
+FluentToggle.Name = "FluentToggle"
+FluentToggle.Parent = game:GetService("CoreGui")
+FluentToggle.ResetOnSpawn = false
 
--- Cấu hình ngoại hình nút bấm
-ToggleButton.Name = "ToggleButton"
-ToggleButton.Parent = ScreenGui
-ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0) -- Màu đỏ phù hợp BloodTheme
-ToggleButton.Position = UDim2.new(0.1, 0, 0.2, 0) 
-ToggleButton.Size = UDim2.new(0, 45, 0, 45) -- Kích thước vừa phải cho Nubia Neo 2
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.Text = "EYE"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.TextSize = 14
-ToggleButton.Draggable = true -- Bạn có thể kéo nút này trên màn hình
+Button.Parent = FluentToggle
+Button.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Màu tối sang trọng của Fluent
+Button.Position = UDim2.new(0.1, 0, 0.15, 0)
+Button.Size = UDim2.new(0, 50, 0, 50)
+Button.Font = Enum.Font.GothamBold
+Button.Text = "EYE"
+Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+Button.TextSize = 14
+Button.Draggable = true -- Kéo nút đi bất cứ đâu trên màn hình
 
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = ToggleButton
+Corner.CornerRadius = UDim.new(0, 10)
+Corner.Parent = Button
 
--- CHỨC NĂNG QUAN TRỌNG: ẨN/HIỆN
-ToggleButton.MouseButton1Click:Connect(function()
-    -- Tìm đúng tên giao diện bạn đã đặt ở dòng đầu tiên của script
-    local uiName = "EyeSpyhub - Sailor Piece (Bản Tự Chế)"
-    local targetUI = game:GetService("CoreGui"):FindFirstChild(uiName)
-    
-    if targetUI then
-        targetUI.Enabled = not targetUI.Enabled
-        -- Đổi màu nút để biết đang bật hay tắt
-        if targetUI.Enabled then
-            ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-        else
-            ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        end
+-- CHỨC NĂNG: Gọi hàm Minimize của Fluent
+Button.MouseButton1Click:Connect(function()
+    if Window then
+        Window:Minimize() -- Đây là hàm chuẩn của Fluent để ẩn/hiện
     else
-        -- Nếu không tìm thấy theo tên, ta dùng cách quét thủ công
-        for _, v in pairs(game:GetService("CoreGui"):GetChildren()) do
-            if v:IsA("ScreenGui") and v.Name:find("EyeSpyhub") then
-                v.Enabled = not v.Enabled
-                break
-            end
-        end
+        warn("Không tìm thấy biến 'Window' của Fluent!")
     end
 end)
