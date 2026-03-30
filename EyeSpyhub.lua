@@ -55,7 +55,7 @@ FarmSection:NewToggle("Bật Auto Farm", "Tự động Xóa & Nhận Quest", fun
                     _G.CurrentQuest = targetNPC
                 end
 
-                -- Bước 3: BAY ĐẾN ĐIỂM FARM (Vận tốc 300)
+                -- Bước 3: BAY ĐẾN ĐIỂM FARM (Vận tốc 150)
                 pcall(function()
                     if targetPos and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                         local root = player.Character.HumanoidRootPart
@@ -64,7 +64,7 @@ FarmSection:NewToggle("Bật Auto Farm", "Tự động Xóa & Nhận Quest", fun
                         local distance = (root.Position - Vector3.new(targetPos.X, targetPos.Y + 5, targetPos.Z)).Magnitude
                         
                         if distance > 5 then
-                            local speed = 300
+                            local speed = 150
                             local duration = distance / speed
                             local tween = game:GetService("TweenService"):Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = goalCFrame})
                             tween:Play()
@@ -99,7 +99,7 @@ end)
 local GojoSection = MainTab:NewSection("Săn Boss Gojo")
 
 _G.StickToBoss = false
-local BOSS_NAME = "Gojo" -- Thay tên chính xác của Boss trong game bạn vào đây
+local BOSS_NAME = "GojoBoss" -- Thay tên chính xác của Boss trong game bạn vào đây
 local HEIGHT_ABOVE = 5   -- Luôn ở trên đầu 5 studs
 
 GojoSection:NewToggle("Auto Stick Gojo (Dính Theo Boss)", "Boss đi đâu mình theo đó", function(state)
