@@ -1,4 +1,14 @@
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+-- Kiểm tra sự tồn tại của thư viện trước khi chạy
+local success, Library = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+end)
+
+if not success or not Library then
+    warn("Không thể tải thư viện GUI. Hãy thử đổi Executor khác!")
+    return
+end
+
+local Window = Library.CreateLib("EyeSpyhub - Sailor Piece", "BloodTheme")
 
 local Window = Fluent:CreateWindow({
     Title = "EyeSpyhub - Sailor Piece (Bản Tự Chế)",
