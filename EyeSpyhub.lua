@@ -216,49 +216,53 @@ Tabs.FixLag:AddInput("FPSCap", {
 Window:SelectTab(1)
 Fluent:Notify({Title = "EyeSpyhub", Content = "Script đã sẵn sàng!", Duration = 5})
 -- ==========================================
--- NÚT BẤM ẨN/HIỆN GUI (CHO MOBILE)
+-- NÚT BẤM ẨN/HIỆN GUI (Dán ở cuối Script)
 -- ==========================================
 local ScreenGui = Instance.new("ScreenGui")
 local ToggleButton = Instance.new("TextButton")
 local UICorner = Instance.new("UICorner")
 
--- Cấu hình ScreenGui (Để không bị mất khi hồi sinh)
+-- Thiết lập để nút không bị mất khi nhân vật chết
 ScreenGui.Name = "EyeSpyToggleGui"
 ScreenGui.Parent = game:GetService("CoreGui")
 ScreenGui.ResetOnSpawn = false
 
--- Cấu hình Nút Bấm
+-- Cấu hình ngoại hình nút bấm
 ToggleButton.Name = "ToggleButton"
 ToggleButton.Parent = ScreenGui
-ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0) -- Màu đỏ BloodTheme
-ToggleButton.Position = UDim2.new(0.1, 0, 0.2, 0) -- Vị trí mặc định
-ToggleButton.Size = UDim2.new(0, 50, 0, 50) -- Kích thước 50x50
+ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0) -- Màu đỏ phù hợp BloodTheme
+ToggleButton.Position = UDim2.new(0.1, 0, 0.2, 0) 
+ToggleButton.Size = UDim2.new(0, 45, 0, 45) -- Kích thước vừa phải cho Nubia Neo 2
 ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.Text = "EYE"
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.TextSize = 14
-ToggleButton.Active = true
-ToggleButton.Draggable = true -- Cho phép kéo nút trên màn hình
+ToggleButton.Draggable = true -- Bạn có thể kéo nút này trên màn hình
 
--- Bo góc nút
 UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = ToggleButton
 
--- Chức năng Ẩn/Hiện
-local IsGuiVisible = true
+-- CHỨC NĂNG QUAN TRỌNG: ẨN/HIỆN
 ToggleButton.MouseButton1Click:Connect(function()
-    if IsGuiVisible then
-        -- Tìm đến frame chính của Kavo UI để ẩn
-        pcall(function()
-            game:GetService("CoreGui"):FindFirstChild("EyeSpyhub - Sailor Piece (Bản Tự Chế)").Enabled = false
-        end)
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50) -- Đổi màu tối khi ẩn
-        IsGuiVisible = false
+    -- Tìm đúng tên giao diện bạn đã đặt ở dòng đầu tiên của script
+    local uiName = "EyeSpyhub - Sailor Piece (Bản Tự Chế)"
+    local targetUI = game:GetService("CoreGui"):FindFirstChild(uiName)
+    
+    if targetUI then
+        targetUI.Enabled = not targetUI.Enabled
+        -- Đổi màu nút để biết đang bật hay tắt
+        if targetUI.Enabled then
+            ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        else
+            ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        end
     else
-        pcall(function()
-            game:GetService("CoreGui"):FindFirstChild("EyeSpyhub - Sailor Piece (Bản Tự Chế)").Enabled = true
-        end)
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0) -- Đổi lại màu đỏ khi hiện
-        IsGuiVisible = true
+        -- Nếu không tìm thấy theo tên, ta dùng cách quét thủ công
+        for _, v in pairs(game:GetService("CoreGui"):GetChildren()) do
+            if v:IsA("ScreenGui") and v.Name:find("EyeSpyhub") then
+                v.Enabled = not v.Enabled
+                break
+            end
+        end
     end
-end)s
+end)
