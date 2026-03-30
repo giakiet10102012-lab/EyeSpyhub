@@ -1,149 +1,120 @@
--- Kiểm tra sự tồn tại của thư viện trước khi chạy
-local success, Library = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-end)
-
-if not success or not Library then
-    warn("Không thể tải thư viện GUI. Hãy thử đổi Executor khác!")
-    return
-end
-
-local Window = Library.CreateLib("EyeSpyhub - Sailor Piece", "BloodTheme")
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "EyeSpyhub - Sailor Piece (Bản Tự Chế)",
-    SubTitle = "by Gemini AI",
+    Title = "EyeSpyhub - Sailor Piece",
+    SubTitle = "by Gemini",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
-    Acrylic = true, 
+    Acrylic = true,
     Theme = "Dark",
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- TẠO CÁC TAB
 local Tabs = {
     Main = Window:AddTab({ Title = "Auto Farm", Icon = "home" }),
-    Boss = Window:AddTab({ Title = "Săn Boss Gojo", Icon = "target" }),
+    Boss = Window:AddTab({ Title = "Săn GojoBoss", Icon = "target" }),
     Combat = Window:AddTab({ Title = "Chiến Đấu", Icon = "swords" }),
-    FixLag = Window:AddTab({ Title = "Fix Lag", Icon = "zap" })
+    FixLag = Window:AddTab({ Title = "Siêu Tối Ưu", Icon = "zap" })
 }
 
 -- ==========================================
--- TAB: AUTO FARM
+-- BIẾN HỆ THỐNG
 -- ==========================================
-local FarmSection = Tabs.Main:AddSection("Cấu Hình Farm")
+_G.AutoFarm = false
+_G.StickToBoss = false
+_G.AutoClick = false
+_G.AutoSkill = false
+_G.SelectedWeaponName = nil -- Tên vũ khí cụ thể được chọn
 
 local QuestTable = {
     {Min = 8000, Max = 8999, NPC = "QuestNPC14", Pos = Vector3.new(-1124.75, 19.7, 371.23)},
     {Min = 9000, Max = 9999, NPC = "QuestNPC15", Pos = Vector3.new(1072.546, 6.778, 1275.642)}, 
-    {Min = 10000, Max = 10749, NPC = "QuestNPC16", Pos = Vector3.new(-1274.657, 6.175, -1191.39)}, 
-    {Min = 10750, Max = 11999, NPC = "QuestNPC18", Pos = Vector3.new(-1876.007, 13.572, -738.603)}, 
+    {Min = 10000, Max = 11499, NPC = "QuestNPC16", Pos = Vector3.new(-1274.657, 6.175, -1191.39)}, 
+    {Min = 11500, Max = 11999, NPC = "QuestNPC18", Pos = Vector3.new(-1876.007, 13.572, -738.603)}, 
     {Min = 12000, Max = 100000, NPC = "QuestNPC19", Pos = Vector3.new(59.851, 5.579, 1816.135)}
 }
 
-_G.AutoFarm = false
-_G.CurrentQuest = ""
+-- Hàm trang bị vũ khí đã chọn
+local function EquipWeapon()
+    local p = game.Players.LocalPlayer
+    if not p.Character or not p.Character:FindFirstChild("Humanoid") or not _G.SelectedWeaponName then return end
+    
+    local tool = p.Backpack:FindFirstChild(_G.SelectedWeaponName)
+    if tool then
+        p.Character.Humanoid:EquipTool(tool)
+    end
+end
 
-local FarmToggle = Tabs.Main:AddToggle("AutoFarmToggle", {Title = "Bật Auto Farm", Default = false})
+-- Hàm sử dụng Skill
+local function UseSkills()
+    local Remote = game:GetService("ReplicatedStorage"):WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility")
+    for i = 1, 4 do
+        Remote:FireServer(i)
+    end
+end
 
+-- ==========================================
+-- TAB 1: AUTO FARM
+-- ==========================================
+local FarmToggle = Tabs.Main:AddToggle("FarmToggle", {Title = "Bật Auto Farm (Tốc độ 150)", Default = false})
 FarmToggle:OnChanged(function()
-    _G.AutoFarm = Fluent.Options.AutoFarmToggle.Value
-    if _G.AutoFarm then
-        _G.CurrentQuest = ""
-        task.spawn(function()
-            while _G.AutoFarm do
-                task.wait(0.1)
+    _G.AutoFarm = Fluent.Options.FarmToggle.Value
+    task.spawn(function()
+        while _G.AutoFarm do
+            task.wait(0.1)
+            pcall(function()
                 local player = game.Players.LocalPlayer
                 local myLv = player.Data.Level.Value
-                local targetNPC, targetPos
-
+                EquipWeapon()
+                
+                local targetPos
                 for _, v in pairs(QuestTable) do
-                    if myLv >= v.Min and myLv <= v.Max then
-                        targetNPC, targetPos = v.NPC, v.Pos
-                        break
-                    end
+                    if myLv >= v.Min and myLv <= v.Max then targetPos = v.Pos break end
                 end
 
-                if targetNPC and _G.CurrentQuest ~= targetNPC then
-                    if _G.CurrentQuest ~= "" then
-                        game:GetService("ReplicatedStorage").RemoteEvents.QuestAbandon:FireServer("repeatable")
-                        task.wait(0.3)
+                if targetPos and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local root = player.Character.HumanoidRootPart
+                    player.Character.Humanoid.PlatformStand = true
+                    root.Velocity = Vector3.new(0,0,0)
+                    local dist = (root.Position - targetPos).Magnitude
+                    if dist > 5 then
+                        game:GetService("TweenService"):Create(root, TweenInfo.new(dist/150, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos.X, targetPos.Y + 5, targetPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)}):Play()
                     end
-                    game:GetService("ReplicatedStorage").RemoteEvents.QuestAccept:FireServer(targetNPC)
-                    _G.CurrentQuest = targetNPC
                 end
-
-                pcall(function()
-                    if targetPos and player.Character:FindFirstChild("HumanoidRootPart") then
-                        local root = player.Character.HumanoidRootPart
-                        local hum = player.Character.Humanoid
-                        local goalCFrame = CFrame.new(targetPos.X, targetPos.Y + 5, targetPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
-                        
-                        if (root.Position - targetPos).Magnitude > 5 then
-                            game:GetService("TweenService"):Create(root, TweenInfo.new((root.Position - targetPos).Magnitude/150, Enum.EasingStyle.Linear), {CFrame = goalCFrame}):Play()
-                        else
-                            root.CFrame = goalCFrame
-                        end
-                        root.Velocity = Vector3.new(0, 0, 0)
-                        hum.PlatformStand = true
-                        for _, v in pairs(player.Character:GetChildren()) do if v:IsA("BasePart") then v.CanCollide = false end end
-                    end
-                end)
-            end
-        end)
-    else
-        pcall(function() game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false end)
-    end
+            end)
+        end
+    end)
 end)
 
-Tabs.Main:AddButton({
-    Title = "Xóa Nhiệm Vụ Hiện Tại",
-    Callback = function()
-        game:GetService("ReplicatedStorage").RemoteEvents.QuestAbandon:FireServer("repeatable")
-        _G.CurrentQuest = ""
-    end
-})
-
 -- ==========================================
--- TAB: SĂN BOSS GOJO
+-- TAB 2: SĂN GOJOBOSS
 -- ==========================================
-local GojoSection = Tabs.Boss:AddSection("Boss Magnet")
-
-_G.StickToBoss = false
-local BOSS_NAME = "GojoBoss"
-
-local StickToggle = Tabs.Boss:AddToggle("StickGojo", {Title = "Dính Theo Boss Gojo", Default = false})
-
+local StickToggle = Tabs.Boss:AddToggle("StickGojo", {Title = "Dính Theo GojoBoss", Default = false})
 StickToggle:OnChanged(function()
     _G.StickToBoss = Fluent.Options.StickGojo.Value
     if _G.StickToBoss then
         pcall(function() game:GetService("ReplicatedStorage").Remotes.TeleportToPortal:FireServer("Shibuya") end)
-        task.wait(2)
         task.spawn(function()
-            local player = game.Players.LocalPlayer
             while _G.StickToBoss do
-                game:GetService("RunService").RenderStepped:Wait()
+                game:GetService("RunService").Heartbeat:Wait()
                 pcall(function()
+                    local player = game.Players.LocalPlayer
                     local root = player.Character.HumanoidRootPart
                     local targetBoss = nil
                     for _, v in pairs(game.Workspace:GetDescendants()) do
-                        if v:IsA("Model") and v.Name:find(BOSS_NAME) and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                        if v:IsA("Model") and v.Name:find("GojoBoss") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
                             targetBoss = v break
                         end
                     end
                     if targetBoss then
+                        EquipWeapon()
                         root.Velocity = Vector3.new(0,0,0)
-                        player.Character.Humanoid.PlatformStand = true
                         root.CFrame = targetBoss.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                    else
-                        local waitPos = Vector3.new(1858.326, 12.986, 338.14)
-                        root.CFrame = root.CFrame:Lerp(CFrame.new(waitPos.X, waitPos.Y + 15, waitPos.Z) * CFrame.Angles(math.rad(-90), 0, 0), 0.1)
+                        if _G.AutoSkill then UseSkills() end
                     end
                 end)
             end
         end)
-    else
-        pcall(function() game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false end)
     end
 end)
 
@@ -160,90 +131,135 @@ Tabs.Boss:AddButton({
 })
 
 -- ==========================================
--- TAB: CHIẾN ĐẤU
+-- TAB 3: CHIẾN ĐẤU (COMBAT)
 -- ==========================================
-local CombatSection = Tabs.Combat:AddSection("Kỹ Năng")
+_G.SelectedWeaponName = nil
+_G.AutoSkill = false
+_G.AutoClick = false
 
-local AutoClickToggle = Tabs.Combat:AddToggle("AutoClick", {Title = "Auto Click", Default = false})
-AutoClickToggle:OnChanged(function()
-    _G.AutoClick = Fluent.Options.AutoClick.Value
-    if _G.AutoClick then
-        task.spawn(function()
-            while _G.AutoClick do
-                game:GetService("ReplicatedStorage").CombatSystem.Remotes.RequestHit:FireServer()
-                task.wait(0.1)
-            end
-        end)
-    end
-end)
+local CombatSection = Tabs.Combat:AddSection("Cấu Hình Chiến Đấu")
 
-local AutoZToggle = Tabs.Combat:AddToggle("AutoZ", {Title = "Auto Skill Z", Default = false})
-AutoZToggle:OnChanged(function()
-    _G.AutoSkillZ = Fluent.Options.AutoZ.Value
-    if _G.AutoSkillZ then
-        task.spawn(function()
-            while _G.AutoSkillZ do
-                game:GetService("ReplicatedStorage").AbilitySystem.Remotes.RequestAbility:FireServer(2)
-                task.wait(0.5)
-            end
-        end)
-    end
-end)
-
--- ==========================================
--- TAB: FIX LAG
--- ==========================================
-Tabs.FixLag:AddButton({
-    Title = "Bật Chế Độ Siêu Mượt",
+-- Nút nhận diện vũ khí đang cầm trên tay
+Tabs.Combat:AddButton({
+    Title = "Xác Nhận Vũ Khí Đang Cầm",
+    Description = "Hãy cầm Kiếm hoặc Melee trên tay rồi bấm nút này",
     Callback = function()
-        for _, v in pairs(game:GetDescendants()) do
-            if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic v.Reflectance = 0
-            elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1
-            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then v.Enabled = false end
+        local char = game.Players.LocalPlayer.Character
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            _G.SelectedWeaponName = tool.Name
+            Fluent:Notify({
+                Title = "EyeSpyhub",
+                Content = "Đã khóa vũ khí: " .. tool.Name,
+                Duration = 3
+            })
+        else
+            Fluent:Notify({
+                Title = "EyeSpyhub",
+                Content = "LỖI: Bạn phải cầm vũ khí trên tay trước!",
+                Duration = 3
+            })
         end
     end
 })
 
-Tabs.FixLag:AddInput("FPSCap", {
-    Title = "Giới Hạn FPS",
-    Default = "60",
-    Placeholder = "Nhập số FPS...",
-    Callback = function(Value)
-        if setfpscap then setfpscap(tonumber(Value)) end
+-- Toggle Auto Click
+local ClickToggle = Tabs.Combat:AddToggle("AutoClick", {Title = "Auto Click (Chuột Trái)", Default = false})
+ClickToggle:OnChanged(function()
+    _G.AutoClick = Fluent.Options.AutoClick.Value
+    task.spawn(function()
+        while _G.AutoClick do
+            pcall(function()
+                game:GetService("ReplicatedStorage").CombatSystem.Remotes.RequestHit:FireServer()
+            end)
+            task.wait(0.1)
+        end
+    end)
+end)
+
+-- Toggle Auto Skill (Z, X, C, V)
+local SkillToggle = Tabs.Combat:AddToggle("AutoSkill", {Title = "Auto Tung Skill (Z, X, C, V)", Default = false})
+SkillToggle:OnChanged(function()
+    _G.AutoSkill = Fluent.Options.AutoSkill.Value
+    task.spawn(function()
+        local Remote = game:GetService("ReplicatedStorage"):WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility")
+        while _G.AutoSkill do
+            -- Chỉ tung skill khi đang Auto Farm hoặc Săn Boss
+            if _G.AutoFarm or _G.StickToBoss then
+                pcall(function()
+                    -- Tung lần lượt các chiêu 1, 2, 3, 4 (Tương ứng Z, X, C, V)
+                    for i = 1, 4 do
+                        Remote:FireServer(i)
+                        task.wait(0.1) -- Delay nhỏ giữa các chiêu để tránh kẹt combo
+                    end
+                end)
+            end
+            task.wait(0.5) -- Nghỉ một chút trước khi lặp lại vòng combo mới
+        end
+    end)
+end)
+
+-- Hàm hỗ trợ (Đảm bảo hàm này nằm trong script chính để Auto Farm gọi được)
+function EquipWeapon()
+    if _G.SelectedWeaponName then
+        local p = game.Players.LocalPlayer
+        local tool = p.Backpack:FindFirstChild(_G.SelectedWeaponName)
+        if tool and p.Character and p.Character:FindFirstChild("Humanoid") then
+            p.Character.Humanoid:EquipTool(tool)
+            end
+    end
+end
+
+-- ==========================================
+-- TAB 4: SIÊU TỐI ƯU (GRAY MODE)
+-- ==========================================
+Tabs.FixLag:AddButton({
+    Title = "Bật Chế Độ Xám (Max FPS)",
+    Callback = function()
+        local lighting = game:GetService("Lighting")
+        lighting.FogEnd = 9e9
+        lighting:ClearAllChildren()
+        for _, v in pairs(game:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Color = Color3.fromRGB(120, 120, 120)
+                v.Material = Enum.Material.SmoothPlastic
+                v.Reflectance = 0
+            elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("Sky") then
+                v:Destroy()
+            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+                v.Enabled = false
+            end
+        end
+        Fluent:Notify({Title = "Fix Lag", Content = "Gray Mode Active!", Duration = 3})
     end
 })
 
-Window:SelectTab(1)
-Fluent:Notify({Title = "EyeSpyhub", Content = "Script đã sẵn sàng!", Duration = 5})
 -- ==========================================
--- NÚT BẤM CHO GIAO DIỆN FLUENT
+-- NÚT BẬT TẮT GUI
 -- ==========================================
-local FluentToggle = Instance.new("ScreenGui")
-local Button = Instance.new("TextButton")
+local ScreenGui = Instance.new("ScreenGui")
+local Toggle = Instance.new("TextButton")
 local Corner = Instance.new("UICorner")
 
-FluentToggle.Name = "FluentToggle"
-FluentToggle.Parent = game:GetService("CoreGui")
-FluentToggle.ResetOnSpawn = false
+ScreenGui.Name = "EyeSpy_Toggle"
+ScreenGui.Parent = game:GetService("CoreGui")
 
-Button.Parent = FluentToggle
-Button.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Màu tối sang trọng của Fluent
-Button.Position = UDim2.new(0.1, 0, 0.15, 0)
-Button.Size = UDim2.new(0, 50, 0, 50)
-Button.Font = Enum.Font.GothamBold
-Button.Text = "EYE"
-Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-Button.TextSize = 14
-Button.Draggable = true -- Kéo nút đi bất cứ đâu trên màn hình
+Toggle.Name = "ToggleButton"
+Toggle.Parent = ScreenGui
+Toggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Toggle.Position = UDim2.new(0.1, 0, 0.15, 0)
+Toggle.Size = UDim2.new(0, 50, 0, 50)
+Toggle.Font = Enum.Font.GothamBold
+Toggle.Text = "EYE"
+Toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+Toggle.Draggable = true
 
 Corner.CornerRadius = UDim.new(0, 10)
-Corner.Parent = Button
+Corner.Parent = Toggle
 
--- CHỨC NĂNG: Gọi hàm Minimize của Fluent
-Button.MouseButton1Click:Connect(function()
-    if Window then
-        Window:Minimize() -- Đây là hàm chuẩn của Fluent để ẩn/hiện
-    else
-        warn("Không tìm thấy biến 'Window' của Fluent!")
-    end
+Toggle.MouseButton1Click:Connect(function()
+    Window:Minimize()
 end)
+
+Window:SelectTab(1)
+Fluent:Notify({Title = "EyeSpyhub", Content = "Hãy cầm vũ khí và bấm 'Chọn Vũ Khí Đang Cầm'!", Duration = 5})
