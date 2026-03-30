@@ -1,16 +1,27 @@
--- Khởi tạo Thư viện GUI
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("EyeSpyhub - Sailor Piece (Bản Tự Chế)", "BloodTheme")
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "EyeSpyhub - Sailor Piece (Bản Tự Chế)",
+    SubTitle = "by Gemini AI",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true, 
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
 
 -- TẠO CÁC TAB
-local MainTab = Window:NewTab("Auto Farm")
-local CombatTab = Window:NewTab("Chiến Đấu")
-local CreditTab = Window:NewTab("Thông Tin")
+local Tabs = {
+    Main = Window:AddTab({ Title = "Auto Farm", Icon = "home" }),
+    Boss = Window:AddTab({ Title = "Săn Boss Gojo", Icon = "target" }),
+    Combat = Window:AddTab({ Title = "Chiến Đấu", Icon = "swords" }),
+    FixLag = Window:AddTab({ Title = "Fix Lag", Icon = "zap" })
+}
 
 -- ==========================================
--- PHẦN 1: AUTO FARM (TAB CHÍNH)
+-- TAB: AUTO FARM
 -- ==========================================
-local FarmSection = MainTab:NewSection("Cấu Hình Farm")
+local FarmSection = Tabs.Main:AddSection("Cấu Hình Farm")
 
 local QuestTable = {
     {Min = 8000, Max = 8999, NPC = "QuestNPC14", Pos = Vector3.new(-1124.75, 19.7, 371.23)},
@@ -21,194 +32,176 @@ local QuestTable = {
 }
 
 _G.AutoFarm = false
-_G.CurrentQuest = "" 
+_G.CurrentQuest = ""
 
-FarmSection:NewToggle("Bật Auto Farm", "Tự động Xóa & Nhận Quest", function(state)
-    _G.AutoFarm = state
-    
-    if state then
-        _G.CurrentQuest = "" 
+local FarmToggle = Tabs.Main:AddToggle("AutoFarmToggle", {Title = "Bật Auto Farm", Default = false})
+
+FarmToggle:OnChanged(function()
+    _G.AutoFarm = Fluent.Options.AutoFarmToggle.Value
+    if _G.AutoFarm then
+        _G.CurrentQuest = ""
         task.spawn(function()
             while _G.AutoFarm do
                 task.wait(0.1)
-                
                 local player = game.Players.LocalPlayer
                 local myLv = player.Data.Level.Value
-                local targetNPC = nil
-                local targetPos = nil
+                local targetNPC, targetPos
 
                 for _, v in pairs(QuestTable) do
                     if myLv >= v.Min and myLv <= v.Max then
-                        targetNPC = v.NPC
-                        targetPos = v.Pos
+                        targetNPC, targetPos = v.NPC, v.Pos
                         break
                     end
                 end
 
-                -- Bước 2: Nhận/Đổi Quest
                 if targetNPC and _G.CurrentQuest ~= targetNPC then
                     if _G.CurrentQuest ~= "" then
-                        game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAbandon"):FireServer("repeatable")
+                        game:GetService("ReplicatedStorage").RemoteEvents.QuestAbandon:FireServer("repeatable")
                         task.wait(0.3)
                     end
-                    game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(targetNPC)
+                    game:GetService("ReplicatedStorage").RemoteEvents.QuestAccept:FireServer(targetNPC)
                     _G.CurrentQuest = targetNPC
                 end
 
-                -- Bước 3: BAY ĐẾN ĐIỂM FARM (Vận tốc 150)
                 pcall(function()
-                    if targetPos and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    if targetPos and player.Character:FindFirstChild("HumanoidRootPart") then
                         local root = player.Character.HumanoidRootPart
                         local hum = player.Character.Humanoid
                         local goalCFrame = CFrame.new(targetPos.X, targetPos.Y + 5, targetPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
-                        local distance = (root.Position - Vector3.new(targetPos.X, targetPos.Y + 5, targetPos.Z)).Magnitude
                         
-                        if distance > 5 then
-                            local speed = 150
-                            local duration = distance / speed
-                            local tween = game:GetService("TweenService"):Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = goalCFrame})
-                            tween:Play()
+                        if (root.Position - targetPos).Magnitude > 5 then
+                            game:GetService("TweenService"):Create(root, TweenInfo.new((root.Position - targetPos).Magnitude/150, Enum.EasingStyle.Linear), {CFrame = goalCFrame}):Play()
                         else
                             root.CFrame = goalCFrame
                         end
-                        
                         root.Velocity = Vector3.new(0, 0, 0)
                         hum.PlatformStand = true
-                        
-                        for _, part in pairs(player.Character:GetChildren()) do
-                            if part:IsA("BasePart") then part.CanCollide = false end
-                        end
+                        for _, v in pairs(player.Character:GetChildren()) do if v:IsA("BasePart") then v.CanCollide = false end end
                     end
                 end)
-            end -- Kết thúc vòng lặp while
-        end) -- Kết thúc task.spawn
+            end
+        end)
     else
-        -- Khi tắt Auto Farm
         pcall(function() game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false end)
     end
 end)
 
-FarmSection:NewButton("Xóa Nhiệm Vụ Hiện Tại", "Gửi lệnh QuestAbandon", function()
-    game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAbandon"):FireServer("repeatable")
-    _G.CurrentQuest = ""
-end)
+Tabs.Main:AddButton({
+    Title = "Xóa Nhiệm Vụ Hiện Tại",
+    Callback = function()
+        game:GetService("ReplicatedStorage").RemoteEvents.QuestAbandon:FireServer("repeatable")
+        _G.CurrentQuest = ""
+    end
+})
 
 -- ==========================================
--- PHẦN: SĂN BOSS GOJO (DÍNH THEO BOSS)
+-- TAB: SĂN BOSS GOJO
 -- ==========================================
-local GojoSection = MainTab:NewSection("Săn Boss Gojo")
+local GojoSection = Tabs.Boss:AddSection("Boss Magnet")
 
 _G.StickToBoss = false
-local BOSS_NAME = "GojoBoss" -- Thay tên chính xác của Boss trong game bạn vào đây
-local HEIGHT_ABOVE = 5   -- Luôn ở trên đầu 5 studs
+local BOSS_NAME = "GojoBoss"
 
-GojoSection:NewToggle("Auto Stick Gojo (Dính Theo Boss)", "Boss đi đâu mình theo đó", function(state)
-    _G.StickToBoss = state
-    
-    if state then
-        -- BƯỚC 1: QUA CỔNG SHIBUYA
-        pcall(function()
-            game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer("Shibuya")
-        end)
-        
-        task.wait(2) -- Đợi load map
+local StickToggle = Tabs.Boss:AddToggle("StickGojo", {Title = "Dính Theo Boss Gojo", Default = false})
 
+StickToggle:OnChanged(function()
+    _G.StickToBoss = Fluent.Options.StickGojo.Value
+    if _G.StickToBoss then
+        pcall(function() game:GetService("ReplicatedStorage").Remotes.TeleportToPortal:FireServer("Shibuya") end)
+        task.wait(2)
         task.spawn(function()
             local player = game.Players.LocalPlayer
-            local RunService = game:GetService("RunService")
-
-            -- Vòng lặp dính theo Boss
             while _G.StickToBoss do
-                RunService.RenderStepped:Wait() -- Cập nhật liên tục theo khung hình (Cực mượt)
-                
+                game:GetService("RunService").RenderStepped:Wait()
                 pcall(function()
-                    local char = player.Character
-                    local root = char.HumanoidRootPart
-                    local hum = char.Humanoid
-                    
-                    -- TÌM BOSS TRONG WORKSPACE
+                    local root = player.Character.HumanoidRootPart
                     local targetBoss = nil
-                    -- Quét trong folder quái hoặc toàn bộ Workspace
-                    for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
-                        if v:IsA("Model") and v.Name:find(BOSS_NAME) and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid").Health > 0 then
-                            targetBoss = v
-                            break
+                    for _, v in pairs(game.Workspace:GetDescendants()) do
+                        if v:IsA("Model") and v.Name:find(BOSS_NAME) and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                            targetBoss = v break
                         end
                     end
-
                     if targetBoss then
-                        -- NẾU TÌM THẤY BOSS: DÍNH CHẶT TRÊN ĐẦU
-                        local bossRoot = targetBoss.HumanoidRootPart
                         root.Velocity = Vector3.new(0,0,0)
-                        hum.PlatformStand = true
-                        
-                        -- Cập nhật tọa độ của mình = Tọa độ Boss + 5 studs chiều dọc (Y)
-                        root.CFrame = bossRoot.CFrame * CFrame.new(0, HEIGHT_ABOVE, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        
-                        -- Noclip để không bị đẩy
-                        for _, part in pairs(char:GetChildren()) do
-                            if part:IsA("BasePart") then part.CanCollide = false end
-                        end
+                        player.Character.Humanoid.PlatformStand = true
+                        root.CFrame = targetBoss.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                     else
-                        -- NẾU CHƯA THẤY BOSS: BAY ĐẾN ĐIỂM CHỜ (Tọa độ cũ bạn đưa)
-                        local waitPos = Vector3.new(1858.3266, 12.9861, 338.1400)
-                        if (root.Position - waitPos).Magnitude > 5 then
-                            root.CFrame = root.CFrame:Lerp(CFrame.new(waitPos.X, waitPos.Y + 15, waitPos.Z) * CFrame.Angles(math.rad(-90), 0, 0), 0.1)
-                        end
+                        local waitPos = Vector3.new(1858.326, 12.986, 338.14)
+                        root.CFrame = root.CFrame:Lerp(CFrame.new(waitPos.X, waitPos.Y + 15, waitPos.Z) * CFrame.Angles(math.rad(-90), 0, 0), 0.1)
                     end
                 end)
             end
         end)
     else
-        -- Tắt chế độ dính
-        pcall(function() 
-            game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false 
-        end)
+        pcall(function() game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false end)
     end
 end)
 
--- NÚT ĐỔI SERVER (GIỮ NGUYÊN)
-GojoSection:NewButton("Tìm Server Mới (Hop Server)", "Đổi server săn Boss", function()
-    local HttpService = game:GetService("HttpService")
-    local TeleportService = game:GetService("TeleportService")
-    pcall(function()
-        local Servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+Tabs.Boss:AddButton({
+    Title = "Hop Server (Đổi Máy Chủ)",
+    Callback = function()
+        local Http = game:GetService("HttpService")
+        local Tp = game:GetService("TeleportService")
+        local Servers = Http:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
         for _, s in pairs(Servers.data) do
-            if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, game.Players.LocalPlayer)
-                break
-            end
+            if s.playing < s.maxPlayers and s.id ~= game.JobId then Tp:TeleportToPlaceInstance(game.PlaceId, s.id, game.Players.LocalPlayer) break end
         end
-    end)
-end)
--- ==========================================
--- PHẦN 2: CHIẾN ĐẤU
--- ==========================================
-local CombatSection = CombatTab:NewSection("Kỹ Năng & Đánh")
+    end
+})
 
-_G.AutoClick = false
-CombatSection:NewToggle("Auto Click", "Tự động spam đánh", function(state)
-    _G.AutoClick = state
-    if state then
+-- ==========================================
+-- TAB: CHIẾN ĐẤU
+-- ==========================================
+local CombatSection = Tabs.Combat:AddSection("Kỹ Năng")
+
+local AutoClickToggle = Tabs.Combat:AddToggle("AutoClick", {Title = "Auto Click", Default = false})
+AutoClickToggle:OnChanged(function()
+    _G.AutoClick = Fluent.Options.AutoClick.Value
+    if _G.AutoClick then
         task.spawn(function()
             while _G.AutoClick do
-                game:GetService("ReplicatedStorage"):WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer()
+                game:GetService("ReplicatedStorage").CombatSystem.Remotes.RequestHit:FireServer()
                 task.wait(0.1)
             end
         end)
     end
 end)
 
-_G.AutoSkillZ = false
-CombatSection:NewToggle("Auto Skill Z", "Tự động dùng chiêu Z", function(state)
-    _G.AutoSkillZ = state
-    if state then
+local AutoZToggle = Tabs.Combat:AddToggle("AutoZ", {Title = "Auto Skill Z", Default = false})
+AutoZToggle:OnChanged(function()
+    _G.AutoSkillZ = Fluent.Options.AutoZ.Value
+    if _G.AutoSkillZ then
         task.spawn(function()
             while _G.AutoSkillZ do
-                game:GetService("ReplicatedStorage"):WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility"):FireServer(2)
+                game:GetService("ReplicatedStorage").AbilitySystem.Remotes.RequestAbility:FireServer(2)
                 task.wait(0.5)
             end
         end)
     end
 end)
 
+-- ==========================================
+-- TAB: FIX LAG
+-- ==========================================
+Tabs.FixLag:AddButton({
+    Title = "Bật Chế Độ Siêu Mượt",
+    Callback = function()
+        for _, v in pairs(game:GetDescendants()) do
+            if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic v.Reflectance = 0
+            elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1
+            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then v.Enabled = false end
+        end
+    end
+})
+
+Tabs.FixLag:AddInput("FPSCap", {
+    Title = "Giới Hạn FPS",
+    Default = "60",
+    Placeholder = "Nhập số FPS...",
+    Callback = function(Value)
+        if setfpscap then setfpscap(tonumber(Value)) end
+    end
+})
+
+Window:SelectTab(1)
+Fluent:Notify({Title = "EyeSpyhub", Content = "Script đã sẵn sàng!", Duration = 5})
