@@ -2,7 +2,7 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 
 local Window = Fluent:CreateWindow({
     Title = "EyeSpyhub - Sailor Piece",
-    SubTitle = "by Gemini",
+    SubTitle = "by EyeSpy",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -54,36 +54,80 @@ local function UseSkills()
 end
 
 -- ==========================================
--- TAB 1: AUTO FARM
+-- TAB 1: AUTO FARM (ĐÃ SỬA HƯỚNG MẶT)
 -- ==========================================
 local FarmToggle = Tabs.Main:AddToggle("FarmToggle", {Title = "Bật Auto Farm (Tốc độ 150)", Default = false})
+
 FarmToggle:OnChanged(function()
     _G.AutoFarm = Fluent.Options.FarmToggle.Value
-    task.spawn(function()
-        while _G.AutoFarm do
-            task.wait(0.1)
-            pcall(function()
-                local player = game.Players.LocalPlayer
-                local myLv = player.Data.Level.Value
-                EquipWeapon()
-                
-                local targetPos
-                for _, v in pairs(QuestTable) do
-                    if myLv >= v.Min and myLv <= v.Max then targetPos = v.Pos break end
-                end
+    
+    if _G.AutoFarm then
+        task.spawn(function()
+            while _G.AutoFarm do
+                task.wait(0.1)
+                pcall(function()
+                    local player = game.Players.LocalPlayer
+                    local char = player.Character
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    local hum = char:FindFirstChild("Humanoid")
+                    
+                    if root and hum then
+                        -- Trang bị vũ khí
+                        EquipWeapon()
+                        
+                        -- Xác định mục tiêu dựa trên Level
+                        local myLv = player.Data.Level.Value
+                        local targetPos
+                        for _, v in pairs(QuestTable) do
+                            if myLv >= v.Min and myLv <= v.Max then targetPos = v.Pos break end
+                        end
 
-                if targetPos and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local root = player.Character.HumanoidRootPart
-                    player.Character.Humanoid.PlatformStand = true
-                    root.Velocity = Vector3.new(0,0,0)
-                    local dist = (root.Position - targetPos).Magnitude
-                    if dist > 5 then
-                        game:GetService("TweenService"):Create(root, TweenInfo.new(dist/150, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos.X, targetPos.Y + 5, targetPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)}):Play()
+                        if targetPos then
+                            -- Chống rơi và giữ nhân vật đứng yên tại chỗ khi Tween
+                            hum.PlatformStand = true
+                            root.Velocity = Vector3.new(0, 0, 0)
+                            
+                            -- Hướng mặt xuống dưới (-90 độ)
+                            local goalCFrame = CFrame.new(targetPos.X, targetPos.Y + 5, targetPos.Z) * CFrame.Angles(math.rad(-90), 0, 0)
+                            
+                            local dist = (root.Position - targetPos).Magnitude
+                            if dist > 5 then
+                                -- Di chuyển đến mục tiêu với mặt hướng xuống
+                                game:GetService("TweenService"):Create(root, TweenInfo.new(dist/150, Enum.EasingStyle.Linear), {CFrame = goalCFrame}):Play()
+                            else
+                                -- Giữ nguyên vị trí và hướng mặt khi đã đến nơi
+                                root.CFrame = goalCFrame
+                            end
+                            
+                            -- Tắt va chạm để không bị kẹt địa hình
+                            for _, part in pairs(char:GetChildren()) do
+                                if part:IsA("BasePart") then part.CanCollide = false end
+                            end
+                        end
                     end
+                end)
+            end
+        end)
+    else
+        -- KHI TẮT FARM: TRẢ NHÂN VẬT VỀ TRẠNG THÁI THẲNG ĐỨNG
+        pcall(function()
+            local char = game.Players.LocalPlayer.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+            
+            if root and hum then
+                hum.PlatformStand = false
+                -- Reset góc xoay về thẳng đứng (giữ nguyên vị trí X, Y, Z hiện tại)
+                root.CFrame = CFrame.new(root.Position) 
+                root.Velocity = Vector3.new(0, 0, 0)
+                
+                -- Bật lại va chạm
+                for _, part in pairs(char:GetChildren()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
                 end
-            end)
-        end
-    end)
+            end
+        end)
+    end
 end)
 
 -- ==========================================
@@ -211,26 +255,79 @@ function EquipWeapon()
 end
 
 -- ==========================================
--- TAB 4: SIÊU TỐI ƯU (GRAY MODE)
+-- TAB 4: SIÊU TỐI ƯU (FIX LAG)
 -- ==========================================
+local LagSection = Tabs.FixLag:AddSection("Tối Ưu Phần Cứng")
+
+-- 1. Ô nhập giới hạn FPS tùy chỉnh
+Tabs.FixLag:AddInput("CustomFPS", {
+    Title = "Giới Hạn FPS Tùy Chỉnh",
+    Default = "60",
+    Placeholder = "Nhập số FPS (VD: 15, 30, 60...)",
+    Numeric = true, -- Chỉ cho phép nhập số
+    Finished = true, -- Chỉ chạy callback khi bấm Enter
+    Callback = function(Value)
+        local fps = tonumber(Value)
+        if fps and fps > 0 then
+            if setfpscap then
+                setfpscap(fps)
+                Fluent:Notify({
+                    Title = "EyeSpyhub",
+                    Content = "Đã giới hạn FPS còn: " .. fps,
+                    Duration = 3
+                })
+            else
+                Fluent:Notify({
+                    Title = "EyeSpyhub",
+                    Content = "Executor của bạn không hỗ trợ setfpscap!",
+                    Duration = 3
+                })
+            end
+        end
+    end
+})
+
+-- 2. Nút Siêu Giảm CPU/GPU (Cập nhật logic mát máy)
 Tabs.FixLag:AddButton({
-    Title = "Bật Chế Độ Xám (Max FPS)",
+    Title = "Chế Độ Treo Máy (Siêu Mát)",
+    Description = "Giảm FPS xuống 10 và Tắt Render 3D",
     Callback = function()
+        -- Giảm FPS xuống mức tối thiểu để CPU nghỉ ngơi
+        if setfpscap then setfpscap(10) end
+        
+        -- Tắt vẽ hình ảnh 3D để GPU không phải làm việc
+        game:GetService("RunService"):Set3dRenderingEnabled(false)
+        
+        -- Xóa bớt hiệu ứng thừa
         local lighting = game:GetService("Lighting")
-        lighting.FogEnd = 9e9
-        lighting:ClearAllChildren()
+        lighting.GlobalShadows = false
         for _, v in pairs(game:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.Color = Color3.fromRGB(120, 120, 120)
-                v.Material = Enum.Material.SmoothPlastic
-                v.Reflectance = 0
-            elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("Sky") then
-                v:Destroy()
-            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") then
                 v.Enabled = false
             end
         end
-        Fluent:Notify({Title = "Fix Lag", Content = "Gray Mode Active!", Duration = 3})
+
+        Fluent:Notify({
+            Title = "EyeSpyhub",
+            Content = "Đã vào chế độ treo máy (10 FPS + No Render)",
+            Duration = 5
+        })
+    end
+})
+
+-- 3. Nút Hồi Phục
+Tabs.FixLag:AddButton({
+    Title = "Hồi Phục Đồ Họa & FPS",
+    Description = "Bật lại Render và đưa FPS về 60",
+    Callback = function()
+        game:GetService("RunService"):Set3dRenderingEnabled(true)
+        if setfpscap then setfpscap(60) end
+        
+        Fluent:Notify({
+            Title = "EyeSpyhub",
+            Content = "Đã trở lại bình thường!",
+            Duration = 3
+        })
     end
 })
 
