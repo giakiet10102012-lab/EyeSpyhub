@@ -18,13 +18,18 @@ local Tabs = {
 }
 
 -- ==========================================
--- BIẾN HỆ THỐNG
+-- BIẾN HỆ THỐNG (CẬP NHẬT)
 -- ==========================================
 _G.AutoFarm = false
 _G.StickToBoss = false
 _G.AutoClick = false
-_G.AutoSkill = false
-_G.SelectedWeaponName = nil -- Tên vũ khí cụ thể được chọn
+
+-- Cấu hình Vũ khí & Kỹ năng
+_G.SelectWeapon = "Melee" -- Mặc định: "Melee" hoặc "Sword"
+_G.UseSkillZ = false
+_G.UseSkillX = false
+_G.UseSkillC = false
+_G.UseSkillV = false
 
 local QuestTable = {
     {Min = 8000, Max = 8999, NPC = "QuestNPC14", Pos = Vector3.new(-1124.75, 19.7, 371.23)},
@@ -34,27 +39,53 @@ local QuestTable = {
     {Min = 12000, Max = 100000, NPC = "QuestNPC19", Pos = Vector3.new(59.851, 5.579, 1816.135)}
 }
 
--- Hàm trang bị vũ khí đã chọn
+-- ==========================================
+-- HÀM HỖ TRỢ (CẬP NHẬT)
+-- ==========================================
+
+-- Hàm trang bị vũ khí tự động dựa trên loại đã chọn (Melee/Sword)
 local function EquipWeapon()
     local p = game.Players.LocalPlayer
-    if not p.Character or not p.Character:FindFirstChild("Humanoid") or not _G.SelectedWeaponName then return end
+    local char = p.Character
+    if not char or not char:FindFirstChild("Humanoid") then return end
     
-    local tool = p.Backpack:FindFirstChild(_G.SelectedWeaponName)
-    if tool then
-        p.Character.Humanoid:EquipTool(tool)
+    -- Quét trong Backpack để tìm vũ khí khớp với loại đã chọn
+    for _, tool in pairs(p.Backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            -- Kiểm tra ToolTip hoặc Tên vũ khí (Sailor Piece thường dùng ToolTip để phân loại)
+            if (tool.ToolTip and tool.ToolTip:find(_G.SelectWeapon)) or (tool.Name:lower():find(_G.SelectWeapon:lower())) then
+                char.Humanoid:EquipTool(tool)
+                break
+            end
+        end
     end
 end
 
--- Hàm sử dụng Skill
+-- Hàm tung kỹ năng dựa trên các lựa chọn Toggle (Z, X, C, V)
 local function UseSkills()
     local Remote = game:GetService("ReplicatedStorage"):WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility")
-    for i = 1, 4 do
-        Remote:FireServer(i)
+    
+    -- Chỉ tung chiêu nếu ô tương ứng được bật
+    if _G.UseSkillZ then 
+        Remote:FireServer(1) 
+        task.wait(0.05) 
+    end
+    if _G.UseSkillX then 
+        Remote:FireServer(2) 
+        task.wait(0.05) 
+    end
+    if _G.UseSkillC then 
+        Remote:FireServer(3) 
+        task.wait(0.05) 
+    end
+    if _G.UseSkillV then 
+        Remote:FireServer(4) 
+        task.wait(0.05) 
     end
 end
 
 -- ==========================================
--- TAB 1: AUTO FARM (ĐÃ SỬA HƯỚNG MẶT)
+-- TAB 1: AUTO FARM (ĐÃ TỐI ƯU)
 -- ==========================================
 local FarmToggle = Tabs.Main:AddToggle("FarmToggle", {Title = "Bật Auto Farm (Tốc độ 150)", Default = false})
 
@@ -72,18 +103,21 @@ FarmToggle:OnChanged(function()
                     local hum = char:FindFirstChild("Humanoid")
                     
                     if root and hum then
-                        -- Trang bị vũ khí
+                        -- 1. Luôn cầm vũ khí đã chọn (Melee/Sword)
                         EquipWeapon()
                         
-                        -- Xác định mục tiêu dựa trên Level
+                        -- 2. Xác định mục tiêu dựa trên Level
                         local myLv = player.Data.Level.Value
                         local targetPos
                         for _, v in pairs(QuestTable) do
-                            if myLv >= v.Min and myLv <= v.Max then targetPos = v.Pos break end
+                            if myLv >= v.Min and myLv <= v.Max then 
+                                targetPos = v.Pos 
+                                break 
+                            end
                         end
 
                         if targetPos then
-                            -- Chống rơi và giữ nhân vật đứng yên tại chỗ khi Tween
+                            -- Chống rơi và giữ nhân vật ổn định
                             hum.PlatformStand = true
                             root.Velocity = Vector3.new(0, 0, 0)
                             
@@ -92,14 +126,15 @@ FarmToggle:OnChanged(function()
                             
                             local dist = (root.Position - targetPos).Magnitude
                             if dist > 5 then
-                                -- Di chuyển đến mục tiêu với mặt hướng xuống
+                                -- Di chuyển mượt mà tới bãi quái
                                 game:GetService("TweenService"):Create(root, TweenInfo.new(dist/150, Enum.EasingStyle.Linear), {CFrame = goalCFrame}):Play()
                             else
-                                -- Giữ nguyên vị trí và hướng mặt khi đã đến nơi
+                                -- Khi đã đến nơi: Khóa vị trí và tung Skill
                                 root.CFrame = goalCFrame
+                                UseSkills() -- Tung các chiêu Z, X, C, V đã chọn
                             end
                             
-                            -- Tắt va chạm để không bị kẹt địa hình
+                            -- Tắt va chạm để tránh văng khi quái xuất hiện
                             for _, part in pairs(char:GetChildren()) do
                                 if part:IsA("BasePart") then part.CanCollide = false end
                             end
@@ -109,7 +144,7 @@ FarmToggle:OnChanged(function()
             end
         end)
     else
-        -- KHI TẮT FARM: TRẢ NHÂN VẬT VỀ TRẠNG THÁI THẲNG ĐỨNG
+        -- KHI TẮT FARM: TRẢ NHÂN VẬT VỀ TRẠNG THÁI BÌNH THƯỜNG
         pcall(function()
             local char = game.Players.LocalPlayer.Character
             local root = char:FindFirstChild("HumanoidRootPart")
@@ -117,19 +152,20 @@ FarmToggle:OnChanged(function()
             
             if root and hum then
                 hum.PlatformStand = false
-                -- Reset góc xoay về thẳng đứng (giữ nguyên vị trí X, Y, Z hiện tại)
+                -- Đứng thẳng lại ngay lập tức
                 root.CFrame = CFrame.new(root.Position) 
                 root.Velocity = Vector3.new(0, 0, 0)
                 
-                -- Bật lại va chạm
+                -- Bật lại va chạm để có thể đi lại bình thường
                 for _, part in pairs(char:GetChildren()) do
-                    if part:IsA("BasePart") then part.CanCollide = true end
+                    if part:IsA("BasePart") then 
+                        part.CanCollide = true 
+                    end
                 end
             end
         end)
     end
 end)
-
 -- ==========================================
 -- TAB 2: SĂN GOJOBOSS
 -- ==========================================
