@@ -1,9 +1,56 @@
--- [[ EyeSpyhub | San Diego (Compact Edition) ]]
-local CG, P, RS, UIS, VU = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService"), game:GetService("VirtualUser")
+-- [[ EyeSpyhub | San Diego (Auto Fix Lag Edition) ]]
+local CG, P, RS, UIS, VU, L = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService"), game:GetService("VirtualUser"), game:GetService("Lighting")
 local LP = P.LocalPlayer
 local P_Buy, W1, W2, W3, W4, W5_Sell, W_LaundE, P_Laund = CFrame.new(6803.02,17.59,23.03), CFrame.new(6872.252,17.219,30.226), CFrame.new(6868.94,17.219,107.597), CFrame.new(258.024,17.219,104.148), CFrame.new(258.357,17.239,-44.435), CFrame.new(208.642,17.406,-43.187), CFrame.new(6882.597,17.417,-40.537), CFrame.new(6809.746,17.442,-40.643)
 local bv, bg
 _G.AutoFarm, _G.NoClip = false, false
+
+-- [HỆ THỐNG AUTO FIX LAG & BÔI XÁM NHÂN VẬT CHỐNG GIẬT]
+task.spawn(function()
+    L.GlobalShadows = false
+    L.FogEnd = 9e9
+    for _, v in pairs(L:GetChildren()) do
+        if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then v:Destroy() end
+    end
+
+    local function MakeGray(char)
+        if not char then return end
+        task.wait(0.1)
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("Shirt") or v:IsA("Pants") or v:IsA("ShirtGraphic") or v:IsA("BodyColors") or v:IsA("Accessory") or v:IsA("Decal") then
+                v:Destroy()
+            elseif v:IsA("BasePart") then
+                v.Material = Enum.Material.SmoothPlastic
+                v.Color = Color3.fromRGB(128, 128, 128)
+            end
+        end
+    end
+
+    for _, plr in pairs(P:GetPlayers()) do
+        if plr.Character then MakeGray(plr.Character) end
+        plr.CharacterAdded:Connect(MakeGray)
+    end
+    P.PlayerAdded:Connect(function(plr) plr.CharacterAdded:Connect(MakeGray) end)
+
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Decal") or v:IsA("Texture") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") then
+            v:Destroy()
+        elseif v:IsA("BasePart") and not v:IsDescendantOf(LP.Character) then
+            v.Material = Enum.Material.SmoothPlastic
+        end
+    end
+
+    workspace.DescendantAdded:Connect(function(v)
+        if v:IsA("Decal") or v:IsA("Texture") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("ShirtGraphic") or v:IsA("BodyColors") or v:IsA("Accessory") then
+            v:Destroy()
+        elseif v:IsA("BasePart") then
+            v.Material = Enum.Material.SmoothPlastic
+            if v.Parent and v.Parent:FindFirstChildOfClass("Humanoid") then
+                v.Color = Color3.fromRGB(128, 128, 128)
+            end
+        end
+    end)
+end)
 
 LP.Idled:Connect(function() VU:Button2Down(Vector2.zero, workspace.CurrentCamera.CFrame) task.wait(1) VU:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame) end)
 RS.Stepped:Connect(function() if _G.NoClip and LP.Character then for _,p in pairs(LP.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end end)
@@ -50,7 +97,7 @@ local function FlyToTargetSafe(obj)
 end
 
 local function FirePrompt(obj, count, hold)
-    if not obj then return end local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not obj me then return end local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
     if pr then local _,_,h = GetChar() for i=1, count or 1 do if not _G.AutoFarm or (h and h.Health<=0) then break end fireproximityprompt(pr) task.wait(hold or 0.35) end end
 end
 
@@ -62,7 +109,7 @@ end
 if CG:FindFirstChild("EyeSpyhub_Gui") then CG.EyeSpyhub_Gui:Destroy() end
 local Gui = Instance.new("ScreenGui", CG) Gui.Name = "EyeSpyhub_Gui"
 local Main = Instance.new("Frame", Gui) Main.Size, Main.Position, Main.BackgroundColor3, Main.Active, Main.Draggable = UDim2.new(0,180,0,120), UDim2.new(0.5,-90,0.5,-60), Color3.fromRGB(25,25,25), true, true
-local Title = Instance.new("TextLabel", Main) Title.Size, Title.Text, Title.TextColor3, Title.BackgroundColor3 = UDim2.new(1,0,0,25), "EyeSpyhub | San Diego", Color3.new(1,1,1), Color3.fromRGB(45,45,45)
+local Title = Instance.new("TextLabel", Main) Title.Size, Title.Text, Title.TextColor3, Title.BackgroundColor3 = UDim2.new(1,0,0,25), "EyeSpyhub | Auto FixLag", Color3.new(1,1,1), Color3.fromRGB(45,45,45)
 
 local function CreateBtn(pos, text, fn)
     local btn = Instance.new("TextButton", Main) btn.Size, btn.Position, btn.Text, btn.BackgroundColor3, btn.TextColor3 = UDim2.new(0.85,0,0,30), pos, text..": OFF", Color3.fromRGB(180,40,40), Color3.new(1,1,1)
