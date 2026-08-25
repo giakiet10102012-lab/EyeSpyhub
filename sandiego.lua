@@ -1,21 +1,140 @@
--- [[ EyeSpyhub | San Diego (Teddy Fix Lag Integrated) ]]
+-- [[ EyeSpyhub | San Diego (Hardcore Fix Lag V3 Integrated) ]]
 local CG, P, RS, UIS, VU, L = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService"), game:GetService("VirtualUser"), game:GetService("Lighting")
 local LP = P.LocalPlayer
+local Terrain = workspace:FindFirstChildOfClass("Terrain")
+
 local P_Buy, W1, W2, W3, W4, W5_Sell, W_LaundE, P_Laund = CFrame.new(6803.02,17.59,23.03), CFrame.new(6872.252,17.219,30.226), CFrame.new(6868.94,17.219,107.597), CFrame.new(258.024,17.219,104.148), CFrame.new(258.357,17.239,-44.435), CFrame.new(208.642,17.406,-43.187), CFrame.new(6882.597,17.417,-40.537), CFrame.new(6809.746,17.442,-40.643)
 local bv, bg
 _G.AutoFarm, _G.NoClip = false, false
 
--- [NHÚNG SCRIPT FIX LAG TEDDY CỦA BẠN]
+-- [HỆ THỐNG FIX LAG HARDCORE V3]
 task.spawn(function()
     pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/skibiditoiletgojo/Haidepzai/refs/heads/main/Fixlag-delete100%25trash-Teddy"))()
+        -- 1. Triệt hạ Lighting & Atmosphere (Chỉ giữ Sky)
+        L.GlobalShadows = false
+        L.FogEnd = 9e9
+        L.Brightness = 0
+        L.ClockTime = 12
+        L.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        pcall(function() L.Technology = Enum.Technology.Compatibility end)
+
+        for _, v in pairs(L:GetChildren()) do
+            if not v:IsA("Sky") then
+                v:Destroy()
+            end
+        end
+
+        -- 2. Dọn dẹp Terrain
+        if Terrain then
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
+            Terrain.WaterReflectance = 0
+            Terrain.WaterTransparency = 0
+            pcall(function() Terrain:Clear() end)
+        end
+
+        -- 3. Bôi xám nhân vật
+        local function ProcessCharacter(char)
+            if not char then return end
+            for _, obj in pairs(char:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    obj.Material = Enum.Material.SmoothPlastic
+                    obj.Color = Color3.fromRGB(120, 120, 120)
+                    obj.Reflectance = 0
+                    obj.CastShadow = false
+                elseif obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("Shirt") or obj:IsA("Pants") or obj:IsA("ShirtGraphic") or obj:IsA("CharacterMesh") or obj:IsA("Accessory") or obj:IsA("Hat") then
+                    obj:Destroy()
+                end
+            end
+        end
+
+        if LP.Character then ProcessCharacter(LP.Character) end
+        LP.CharacterAdded:Connect(function(char)
+            char:WaitForChild("HumanoidRootPart")
+            task.wait(0.1)
+            ProcessCharacter(char)
+        end)
+
+        -- 4. Xóa Texture / MeshPart trên toàn Map
+        local GREY_COLOR = Color3.fromRGB(120, 120, 120)
+        local function StripObject(obj)
+            for _, p in pairs(P:GetPlayers()) do
+                if p.Character and obj:IsDescendantOf(p.Character) then
+                    return
+                end
+            end
+
+            if obj:IsA("BasePart") then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Color = GREY_COLOR
+                obj.Reflectance = 0
+                obj.CastShadow = false
+                if obj:IsA("MeshPart") then
+                    obj.TextureID = ""
+                end
+            elseif obj:IsA("SpecialMesh") then
+                obj.TextureId = ""
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj:Destroy()
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") or obj:IsA("Beam") or obj:IsA("Light") or obj:IsA("Highlight") then
+                obj:Destroy()
+            end
+        end
+
+        for _, obj in pairs(workspace:GetDescendants()) do
+            StripObject(obj)
+        end
+
+        workspace.DescendantAdded:Connect(function(obj)
+            task.wait()
+            StripObject(obj)
+        end)
     end)
 end)
 
-LP.Idled:Connect(function() VU:Button2Down(Vector2.zero, workspace.CurrentCamera.CFrame) task.wait(1) VU:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame) end)
-RS.Stepped:Connect(function() if _G.NoClip and LP.Character then for _,p in pairs(LP.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end end)
+-- Anti-AFK
+LP.Idled:Connect(function() 
+    VU:Button2Down(Vector2.zero, workspace.CurrentCamera.CFrame) 
+    task.wait(1) 
+    VU:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame) 
+end)
 
-local function GetChar() local c = LP.Character return c, c and c:FindFirstChild("HumanoidRootPart"), c and c:FindFirstChildOfClass("Humanoid") end
+-- [HỆ THỐNG NOCLIP]
+local noClipConnection
+local function ToggleNoClip(state)
+    _G.NoClip = state
+    if noClipConnection then 
+        noClipConnection:Disconnect() 
+        noClipConnection = nil 
+    end
+    
+    if _G.NoClip then
+        noClipConnection = RS.Stepped:Connect(function()
+            if _G.NoClip and LP.Character then
+                for _, part in ipairs(LP.Character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if LP.Character then
+            for _, part in ipairs(LP.Character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name == "HumanoidRootPart" then
+                    part.CanCollide = false
+                elseif part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+local function GetChar() 
+    local c = LP.Character 
+    return c, c and c:FindFirstChild("HumanoidRootPart"), c and c:FindFirstChildOfClass("Humanoid") 
+end
 
 local function DisableFly() 
     if bg then bg:Destroy() bg = nil end 
@@ -30,7 +149,11 @@ local function EnableFly()
     h.PlatformStand = true
 end
 
-LP.CharacterAdded:Connect(function() DisableFly() task.wait(1) end)
+LP.CharacterAdded:Connect(function() 
+    DisableFly() 
+    if _G.NoClip then ToggleNoClip(true) end
+    task.wait(1) 
+end)
 
 local function FlyTo(targetCF, speed)
     speed = speed or 250 local _,r,h = GetChar() if not r or not h or h.Health <= 0 then return end EnableFly()
@@ -96,6 +219,7 @@ local function GetItemCount(name)
     return c
 end
 
+-- [GIAO DIỆN EYESPYHUB GUI]
 if CG:FindFirstChild("EyeSpyhub_Gui") then CG.EyeSpyhub_Gui:Destroy() end
 local Gui = Instance.new("ScreenGui", CG) Gui.Name = "EyeSpyhub_Gui"
 local Main = Instance.new("Frame", Gui) Main.Size, Main.Position, Main.BackgroundColor3, Main.Active, Main.Draggable = UDim2.new(0,180,0,120), UDim2.new(0.5,-90,0.5,-60), Color3.fromRGB(25,25,25), true, true
@@ -104,13 +228,24 @@ local Title = Instance.new("TextLabel", Main) Title.Size, Title.Text, Title.Text
 local function CreateBtn(pos, text, fn)
     local btn = Instance.new("TextButton", Main) btn.Size, btn.Position, btn.Text, btn.BackgroundColor3, btn.TextColor3 = UDim2.new(0.85,0,0,30), pos, text..": OFF", Color3.fromRGB(180,40,40), Color3.new(1,1,1)
     btn.MouseButton1Click:Connect(function()
-        local state = fn() btn.Text = text..(state and ": ON" or ": OFF") btn.BackgroundColor3 = state and Color3.fromRGB(40,180,40) or Color3.fromRGB(180,40,40)
+        local state = fn() 
+        btn.Text = text..(state and ": ON" or ": OFF") 
+        btn.BackgroundColor3 = state and Color3.fromRGB(40,180,40) or Color3.fromRGB(180,40,40)
     end)
 end
 
-CreateBtn(UDim2.new(0.075,0,0.3,0), "Auto Farm", function() _G.AutoFarm = not _G.AutoFarm if not _G.AutoFarm then DisableFly() end return _G.AutoFarm end)
-CreateBtn(UDim2.new(0.075,0,0.62,0), "NoClip", function() _G.NoClip = not _G.NoClip return _G.NoClip end)
+CreateBtn(UDim2.new(0.075,0,0.3,0), "Auto Farm", function() 
+    _G.AutoFarm = not _G.AutoFarm 
+    if not _G.AutoFarm then DisableFly() end 
+    return _G.AutoFarm 
+end)
 
+CreateBtn(UDim2.new(0.075,0,0.62,0), "NoClip", function() 
+    ToggleNoClip(not _G.NoClip) 
+    return _G.NoClip 
+end)
+
+-- [VÒNG LẶP AUTO FARM]
 task.spawn(function()
     while task.wait(0.3) do
         if _G.AutoFarm then
