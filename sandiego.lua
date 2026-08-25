@@ -1,15 +1,26 @@
--- [[ EyeSpyhub | San Diego v14.4 ]]
+-- [[ EyeSpyhub | San Diego - Farm Edition ]]
 local CoreGui, Players, RunService, UserInputService, VirtualUser = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService"), game:GetService("VirtualUser")
 local LP = Players.LocalPlayer
 
 local Pos_BuyItem, Way_1, Way_2, Way_3, Way_4, Way_5_Seller, Way_LaunderEntry, Pos_Launder = CFrame.new(6803.02, 17.59, 23.03), CFrame.new(6872.252, 17.219, 30.226), CFrame.new(6868.94, 17.219, 107.597), CFrame.new(258.024, 17.219, 104.148), CFrame.new(258.357, 17.239, -44.435), CFrame.new(208.642, 17.406, -43.187), CFrame.new(6882.597, 17.417, -40.537), CFrame.new(6809.746, 17.442, -40.643)
 local FLY_SPEED, SELL_COOLDOWN, bv, bg = 300, 6
 _G.AutoFarm = false
+_G.NoClip = false
 
 LP.Idled:Connect(function()
     VirtualUser:Button2Down(Vector2.zero, workspace.CurrentCamera.CFrame)
     task.wait(1)
     VirtualUser:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame)
+end)
+
+RunService.Stepped:Connect(function()
+    if _G.NoClip and LP.Character then
+        for _, part in pairs(LP.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
 end)
 
 local function GetCharacter()
@@ -119,19 +130,28 @@ local ScreenGui = Instance.new("ScreenGui", CoreGui)
 ScreenGui.Name = "EyeSpyhub_Gui"
 
 local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Size, MainFrame.Position, MainFrame.BackgroundColor3, MainFrame.Draggable, MainFrame.Active = UDim2.new(0, 220, 0, 150), UDim2.new(0.5, -110, 0.5, -75), Color3.fromRGB(25, 25, 25), true, true
+MainFrame.Size, MainFrame.Position, MainFrame.BackgroundColor3, MainFrame.Draggable, MainFrame.Active = UDim2.new(0, 200, 0, 140), UDim2.new(0.5, -100, 0.5, -70), Color3.fromRGB(25, 25, 25), true, true
 
 local Title = Instance.new("TextLabel", MainFrame)
-Title.Size, Title.Text, Title.TextColor3, Title.BackgroundColor3 = UDim2.new(1, 0, 0, 30), "EyeSpyhub Auto Farm v14.4", Color3.new(1, 1, 1), Color3.fromRGB(45, 45, 45)
+Title.Size, Title.Text, Title.TextColor3, Title.BackgroundColor3 = UDim2.new(1, 0, 0, 30), "EyeSpyhub | Auto Farm", Color3.new(1, 1, 1), Color3.fromRGB(45, 45, 45)
 
 local ToggleBtn = Instance.new("TextButton", MainFrame)
-ToggleBtn.Size, ToggleBtn.Position, ToggleBtn.Text, ToggleBtn.BackgroundColor3, ToggleBtn.TextColor3 = UDim2.new(0.85, 0, 0, 40), UDim2.new(0.075, 0, 0.4, 0), "Auto Farm: OFF", Color3.fromRGB(180, 40, 40), Color3.new(1, 1, 1)
+ToggleBtn.Size, ToggleBtn.Position, ToggleBtn.Text, ToggleBtn.BackgroundColor3, ToggleBtn.TextColor3 = UDim2.new(0.85, 0, 0, 35), UDim2.new(0.075, 0, 0.28, 0), "Auto Farm: OFF", Color3.fromRGB(180, 40, 40), Color3.new(1, 1, 1)
 
 ToggleBtn.MouseButton1Click:Connect(function()
     _G.AutoFarm = not _G.AutoFarm
     ToggleBtn.Text = _G.AutoFarm and "Auto Farm: ON" or "Auto Farm: OFF"
     ToggleBtn.BackgroundColor3 = _G.AutoFarm and Color3.fromRGB(40, 180, 40) or Color3.fromRGB(180, 40, 40)
     if not _G.AutoFarm then DisableFly() end
+end)
+
+local NoClipBtn = Instance.new("TextButton", MainFrame)
+NoClipBtn.Size, NoClipBtn.Position, NoClipBtn.Text, NoClipBtn.BackgroundColor3, NoClipBtn.TextColor3 = UDim2.new(0.85, 0, 0, 35), UDim2.new(0.075, 0, 0.60, 0), "NoClip: OFF", Color3.fromRGB(180, 40, 40), Color3.new(1, 1, 1)
+
+NoClipBtn.MouseButton1Click:Connect(function()
+    _G.NoClip = not _G.NoClip
+    NoClipBtn.Text = _G.NoClip and "NoClip: ON" or "NoClip: OFF"
+    NoClipBtn.BackgroundColor3 = _G.NoClip and Color3.fromRGB(40, 180, 40) or Color3.fromRGB(180, 40, 40)
 end)
 
 local ToggleGuiBtn = Instance.new("TextButton", ScreenGui)
