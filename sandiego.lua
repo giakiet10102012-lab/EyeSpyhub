@@ -1,4 +1,4 @@
--- [[ EyeSpyhub | San Diego (Fixed Laundering + Hardcore Fix Lag V3) ]]
+-- [[ EyeSpyhub | San Diego (Hardcore Fix Lag V3 + 6s Sell Cooldown) ]]
 local CG, P, RS, UIS, VU, L = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService"), game:GetService("VirtualUser"), game:GetService("Lighting")
 local LP = P.LocalPlayer
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
@@ -170,54 +170,36 @@ local function FlyTo(targetCF, speed)
     task.wait(0.05)
 end
 
--- TÌM MỤC TIÊU GẦN TỌA ĐỘ CHỈ ĐỊNH
-local function GetClosestTarget(name, originCF)
-    local _,r = GetChar()
-    local searchPos = originCF and originCF.Position or (r and r.Position)
-    if not searchPos then return workspace:FindFirstChild(name, true) end
-
+local function GetClosestTarget(name)
+    local _,r = GetChar() if not r then return workspace:FindFirstChild(name, true) end
     local cl, minD = nil, math.huge
     for _,d in pairs(workspace:GetDescendants()) do
         if d.Name == name and d:FindFirstChildWhichIsA("ProximityPrompt", true) then
             local p = d:IsA("BasePart") and d or d:FindFirstChildWhichIsA("BasePart", true)
-            if p then
-                local dist = (searchPos - p.Position).Magnitude
-                if dist < minD then 
-                    minD = dist 
-                    cl = d 
-                end
+            if p and (r.Position - p.Position).Magnitude < minD then 
+                minD = (r.Position - p.Position).Magnitude 
+                cl = d 
             end
         end
     end
     return cl or workspace:FindFirstChild(name, true)
 end
 
--- BAY TỚI MỤC TIÊU VÀ SNAP CHÍNH XÁC
 local function FlyToTargetSafe(obj)
     if not obj then return end 
     local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
     local pPart = pr and (pr.Parent:IsA("BasePart") and pr.Parent or pr.Parent:FindFirstChildWhichIsA("BasePart", true)) or (obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true))
     local _,r = GetChar() if not pPart or not r then return end
-    
-    FlyTo(pPart.CFrame, 200)
-    if r and r.Parent then
-        r.CFrame = pPart.CFrame -- Ép nhân vật đứng sát 100% vào Prompt
-    end
+    FlyTo(CFrame.new(pPart.Position + Vector3.new(0, 1, 1), pPart.Position), 200)
 end
 
--- KÍCH HOẠT PROXIMITY PROMPT
 local function FirePrompt(obj, count, hold)
     if not obj then return end 
     local pr = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
     if pr then 
-        local _,r,h = GetChar() 
-        local pPart = pr.Parent:IsA("BasePart") and pr.Parent or pr.Parent:FindFirstChildWhichIsA("BasePart", true)
-        
+        local _,_,h = GetChar() 
         for i = 1, count or 1 do 
             if not _G.AutoFarm or (h and h.Health <= 0) then break end 
-            if r and pPart then
-                r.CFrame = pPart.CFrame -- Cập nhật vị trí liên tục khi ấn
-            end
             fireproximityprompt(pr) 
             task.wait(hold or 0.3) 
         end 
@@ -266,12 +248,12 @@ task.spawn(function()
             pcall(function()
                 local _,r,h = GetChar() if not r or not h or h.Health <= 0 then return end
                 
-                -- 1. MUA TRANH (Mona Lisa Painting)
+                -- 1. Mua tranh
                 if GetItemCount("Mona Lisa Painting") < 5 then
                     FlyTo(P_Buy)
                     while _G.AutoFarm and GetItemCount("Mona Lisa Painting") < 5 do
                         local _,cr,ch = GetChar() if not cr or not ch or ch.Health <= 0 then break end
-                        local item = GetClosestTarget("Mona Lisa Painting", P_Buy) 
+                        local item = GetClosestTarget("Mona Lisa Painting") 
                         if item then 
                             FlyToTargetSafe(item) 
                             FirePrompt(item, 1, 0.3)
@@ -284,26 +266,24 @@ task.spawn(function()
                 
                 if not _G.AutoFarm then return end
                 
-                -- 2. BÁN TRANH
+                -- 2. Bay đến khu vực bán (Seller4)
                 FlyTo(W1); FlyTo(W2); FlyTo(W3); FlyTo(W4); FlyTo(W5_Sell)
-                local npc = GetClosestTarget("Seller4", W5_Sell) 
-                if npc then 
-                    FlyToTargetSafe(npc) 
-                    task.wait(0.2)
-                    FirePrompt(npc, 1, 1.0) 
-                end 
-                task.wait(0.3)
+                local npc = GetClosestTarget("Seller4") 
+                if npc then FlyToTargetSafe(npc) end 
+                
+                -- COOLDOWN BÁN 6 GIÂY
+                task.wait(6) 
+                
+                FirePrompt(npc, 1, 1.0) 
+                task.wait(0.5)
                 
                 if not _G.AutoFarm then return end
                 
-                -- 3. RỬA TIỀN (FIXED)
+                -- 3. Rửa tiền & Bay về
                 FlyTo(W4); FlyTo(W3); FlyTo(W2); FlyTo(W1); FlyTo(W_LaundE); FlyTo(P_Laund)
-                local launder = GetClosestTarget("PromptPart", P_Laund) 
-                if launder then 
-                    FlyToTargetSafe(launder) 
-                    task.wait(0.2)
-                    FirePrompt(launder, 2, 0.5) -- Thử lại 2 lần, mỗi lần cách nhau 0.5s
-                end 
+                local launder = GetClosestTarget("PromptPart") 
+                if launder then FlyToTargetSafe(launder) end 
+                FirePrompt(launder, 1, 1.0) 
                 task.wait(0.3)
                 
                 if not _G.AutoFarm then return end
