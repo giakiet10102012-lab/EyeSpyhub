@@ -1,4 +1,4 @@
--- [[ EyeSpyhub | San Diego (Hardcore Fix Lag V3 + 6s Sell Cooldown) ]]
+-- [[ EyeSpyhub | San Diego (Hardcore Fix Lag V3 + 6s Sell Cooldown + Launder Fix) ]]
 local CG, P, RS, UIS, VU, L = game:GetService("CoreGui"), game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService"), game:GetService("VirtualUser"), game:GetService("Lighting")
 local LP = P.LocalPlayer
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
@@ -271,7 +271,7 @@ task.spawn(function()
                 local npc = GetClosestTarget("Seller4") 
                 if npc then FlyToTargetSafe(npc) end 
                 
-                -- COOLDOWN BÁN 6 GIÂY
+                -- Cooldown Bán 6s
                 task.wait(6) 
                 
                 FirePrompt(npc, 1, 1.0) 
@@ -283,7 +283,9 @@ task.spawn(function()
                 FlyTo(W4); FlyTo(W3); FlyTo(W2); FlyTo(W1); FlyTo(W_LaundE); FlyTo(P_Laund)
                 local launder = GetClosestTarget("PromptPart") 
                 if launder then FlyToTargetSafe(launder) end 
-                FirePrompt(launder, 1, 1.0) 
+                
+                -- Bấm nút rửa tiền 2 lần, mỗi lần cách nhau 0.5 giây
+                FirePrompt(launder, 2, 0.5) 
                 task.wait(0.3)
                 
                 if not _G.AutoFarm then return end
