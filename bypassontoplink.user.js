@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Google SEO Traffic & Smart Bypass Engine v6.2.1 (Single-Submit Fixed Edition)
+// @name         Google SEO Traffic & Smart Bypass Engine v7.1.0 (Clean Edition)
 // @namespace    http://tampermonkey.net/
-// @version      6.2.1
-// @description  Bypass SEO Google, mở Tab độc lập, chống trôi mã, Auto Click, Reload khi kẹt mã "0" & Nhập mã đúng 1 lần duy nhất.
+// @version      7.1.0
+// @description  Bypass SEO Google, mở Tab độc lập, chống trôi mã, Auto Click, Reload khi kẹt mã "0" & Nhập mã 1 lần duy nhất.
 // @author       MrDon & Assistant
 // @match        *://*.google.com/*
 // @match        *://*.google.com.vn/*
@@ -32,19 +32,11 @@
     const TASK_KEY = 'seo_task';
     const TASK_TIMEOUT = 10 * 60 * 1000;
 
-    const SEARCH_INTERVAL = 500;
-    const SEARCH_MAX_ATTEMPTS = 12;
+    const SEARCH_INTERVAL = 400;
+    const SEARCH_MAX_ATTEMPTS = 15;
+    const TARGET_INTERVAL = 200;
 
-    const TARGET_INTERVAL = 250;
-
-    const BANNER_KEYWORDS = [
-        'banner',
-        'popup',
-        'float',
-        'close',
-        'openbanner',
-        'ad_'
-    ];
+    const BANNER_KEYWORDS = ['banner', 'popup', 'float', 'close', 'openbanner', 'ad_', 'advertisement', 'overlay'];
 
     // =============================================================
     // 1. UTILS & HELPER FUNCTIONS
@@ -60,13 +52,12 @@
 
     function normalizeDomain(value) {
         let text = normalizeText(value);
-        text = text
+        return text
             .replace(/^(?:https?:\/\/)?(?:www\.)?/i, '')
             .split('/')[0]
             .split('?')[0]
             .split('#')[0]
             .trim();
-        return text;
     }
 
     function cleanPath(path) {
@@ -83,12 +74,7 @@
         if (!clean) return [];
         return clean
             .split('/')
-            .flatMap(part =>
-                part
-                    .split(/[-_.~]+/)
-                    .map(x => x.trim())
-                    .filter(Boolean)
-            )
+            .flatMap(part => part.split(/[-_.~]+/).map(x => x.trim()).filter(Boolean))
             .filter(token => token.length >= 2);
     }
 
@@ -113,11 +99,7 @@
         href = decodeRepeated(href);
 
         try {
-            if (
-                href.includes('/url?') ||
-                href.includes('/url?q=') ||
-                href.includes('/url?sa=')
-            ) {
+            if (href.includes('/url?') || href.includes('/url?q=') || href.includes('/url?sa=')) {
                 const queryIndex = href.indexOf('?');
                 const query = href.slice(queryIndex + 1);
                 const params = new URLSearchParams(query);
@@ -135,23 +117,11 @@
 
     function parseTargetInput(target) {
         const original = String(target || '').trim();
-        if (!original) {
-            return { original: '', domain: '', path: '', tokens: [] };
-        }
+        if (!original) return { original: '', domain: '', path: '', tokens: [] };
 
         let value = decodeRepeated(original).trim();
-
-        if (
-            !/^https?:\/\//i.test(value) &&
-            !/^\/\//.test(value) &&
-            !/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(value)
-        ) {
-            return {
-                original,
-                domain: '',
-                path: cleanPath(value),
-                tokens: getPathTokens(value)
-            };
+        if (!/^https?:\/\//i.test(value) && !/^\/\//.test(value) && !/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(value)) {
+            return { original, domain: '', path: cleanPath(value), tokens: getPathTokens(value) };
         }
 
         try {
@@ -165,9 +135,7 @@
                 tokens: getPathTokens(url.pathname)
             };
         } catch (_) {
-            const parts = value
-                .replace(/^(?:https?:\/\/)?(?:www\.)?/i, '')
-                .split('/');
+            const parts = value.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '').split('/');
             return {
                 original,
                 domain: normalizeDomain(parts.shift() || ''),
@@ -180,9 +148,7 @@
     function extractUrlParts(rawHref) {
         try {
             let value = decodeRepeated(rawHref);
-            if (!/^https?:\/\//i.test(value)) {
-                value = new URL(value, location.href).href;
-            }
+            if (!/^https?:\/\//i.test(value)) value = new URL(value, location.href).href;
             const url = new URL(value);
             return {
                 url: url.href,
@@ -193,13 +159,7 @@
             };
         } catch (_) {
             const text = normalizeText(rawHref);
-            return {
-                url: text,
-                domain: normalizeDomain(text),
-                path: '',
-                query: '',
-                hash: ''
-            };
+            return { url: text, domain: normalizeDomain(text), path: '', query: '', hash: '' };
         }
     }
 
@@ -207,15 +167,11 @@
         if (!targetTokens.length) return 0;
         let matched = 0;
         for (const targetToken of targetTokens) {
-            const exact = candidateTokens.some(ct => ct === targetToken);
-            if (exact) {
+            if (candidateTokens.some(ct => ct === targetToken)) {
                 matched += 1;
-                continue;
+            } else if (candidateTokens.some(ct => ct.includes(targetToken) || targetToken.includes(ct))) {
+                matched += 0.7;
             }
-            const partial = candidateTokens.some(
-                ct => ct.includes(targetToken) || targetToken.includes(ct)
-            );
-            if (partial) matched += 0.7;
         }
         return matched / targetTokens.length;
     }
@@ -225,7 +181,6 @@
         const target = cleanPath(targetPath);
         const candidate = cleanPath(candidatePath);
         if (!target || !candidate) return 0;
-
         if (candidate === target || candidate.includes(target)) return 1;
 
         const targetParts = target.split('/');
@@ -233,11 +188,7 @@
         let matched = 0;
 
         for (const targetPart of targetParts) {
-            if (
-                candidateParts.some(
-                    cp => cp === targetPart || cp.includes(targetPart) || targetPart.includes(cp)
-                )
-            ) {
+            if (candidateParts.some(cp => cp === targetPart || cp.includes(targetPart) || targetPart.includes(cp))) {
                 matched++;
             }
         }
@@ -246,9 +197,7 @@
 
     function getVisibleUrlText(link) {
         if (!link) return '';
-        const parent =
-            link.closest('div.MjjYud, div.tF2Cxc, div.g, div[data-snhf], div') ||
-            link.parentElement;
+        const parent = link.closest('div.MjjYud, div.tF2Cxc, div.g, div[data-snhf], div') || link.parentElement;
         if (!parent) return '';
         return normalizeText(parent.innerText || parent.textContent || '');
     }
@@ -263,41 +212,25 @@
         let score = 0;
 
         if (rawTargetClean) {
-            if (candidate.domain.includes(rawTargetClean) || rawTargetClean.includes(candidate.domain)) {
-                score += 60;
-            }
-            if (candidate.url.includes(rawTargetClean)) {
-                score += 40;
-            }
+            if (candidate.domain.includes(rawTargetClean) || rawTargetClean.includes(candidate.domain)) score += 60;
+            if (candidate.url.includes(rawTargetClean)) score += 40;
         }
 
         if (target.domain) {
-            if (candidate.domain === target.domain) {
-                score += 100;
-            } else if (candidate.domain.endsWith(`.${target.domain}`) || target.domain.endsWith(`.${candidate.domain}`)) {
-                score += 80;
-            } else if (candidate.domain.includes(target.domain) || target.domain.includes(candidate.domain)) {
-                score += 40;
-            }
+            if (candidate.domain === target.domain) score += 100;
+            else if (candidate.domain.endsWith(`.${target.domain}`) || target.domain.endsWith(`.${candidate.domain}`)) score += 80;
+            else if (candidate.domain.includes(target.domain) || target.domain.includes(candidate.domain)) score += 40;
         }
 
         if (target.path) {
             const pathScore = sequenceScore(target.path, candidate.path);
             const tokenScore = tokenMatchScore(target.tokens, getPathTokens(candidate.path));
-            score += pathScore * 50;
-            score += tokenScore * 30;
+            score += pathScore * 50 + tokenScore * 30;
         }
 
         const visibleText = getVisibleUrlText(element);
-        if (visibleText && rawTargetClean) {
-            if (visibleText.includes(rawTargetClean)) {
-                score += 30;
-            }
-        }
-
-        if (candidate.url.includes('google.') || candidate.url.includes('/search')) {
-            score -= 100;
-        }
+        if (visibleText && rawTargetClean && visibleText.includes(rawTargetClean)) score += 30;
+        if (candidate.url.includes('google.') || candidate.url.includes('/search')) score -= 100;
 
         return score;
     }
@@ -319,8 +252,7 @@
             }
         }
 
-        if (!best || bestScore < 30) return null;
-        return best;
+        return (best && bestScore >= 30) ? best : null;
     }
 
     function isBlacklisted(str) {
@@ -366,18 +298,54 @@
         element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
     }
 
+    function showToast(message, type = 'info') {
+        const toastBox = document.getElementById('mrdon-toast-container') || (() => {
+            const box = document.createElement('div');
+            box.id = 'mrdon-toast-container';
+            box.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:999999999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+            (document.body || document.documentElement).appendChild(box);
+            return box;
+        })();
+
+        const toast = document.createElement('div');
+        const bgColor = type === 'err' ? '#f38ba8' : type === 'warn' ? '#f9e2af' : '#a6e3a1';
+        const textColor = '#11111b';
+
+        toast.style.cssText = `
+            background: ${bgColor}; color: ${textColor}; padding: 10px 14px;
+            border-radius: 8px; font-family: sans-serif; font-size: 12px; font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; transform: translateY(10px);
+            transition: all 0.3s ease; pointer-events: auto;
+        `;
+        toast.textContent = message;
+        toastBox.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        });
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(10px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3500);
+    }
+
     function executeAdvancedClick(element, gui) {
         if (!element) return;
 
-        gui?.log('🎯 Tìm thấy nút lấy mã! Đang kích hoạt...', 'info');
+        gui?.log('🎯 Tìm thấy nút lấy mã! Đang mở khóa và kích hoạt...', 'info');
 
         try {
+            element.removeAttribute('disabled');
+            element.style.pointerEvents = 'auto';
+            element.style.cursor = 'pointer';
             element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
         } catch (_) {}
 
         setTimeout(() => {
             if (!element.isConnected) return;
-
             const rect = element.getBoundingClientRect();
             if (!rect.width || !rect.height) return;
 
@@ -403,7 +371,6 @@
                         if (typeof unsafeWindow !== 'undefined') unsafeWindow.eval(onclickAttr);
                         else window.eval(onclickAttr);
                     }
-
                     const hrefAttr = tgt.getAttribute('href');
                     if (hrefAttr && hrefAttr.startsWith('javascript:')) {
                         const jsCode = hrefAttr.replace(/^javascript:/i, '');
@@ -416,34 +383,25 @@
             try {
                 const jq = (typeof unsafeWindow !== 'undefined' ? unsafeWindow.$ || unsafeWindow.jQuery : null) || window.$ || window.jQuery;
                 if (jq) {
-                    uniqueTargets.forEach(tgt => {
-                        try { jq(tgt).trigger('click'); } catch (_) {}
-                    });
+                    uniqueTargets.forEach(tgt => { try { jq(tgt).trigger('click'); } catch (_) {} });
                 }
             } catch (_) {}
 
             const eventTypes = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
             const eventOptions = {
-                bubbles: true,
-                cancelable: true,
+                bubbles: true, cancelable: true,
                 view: typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
-                clientX: clickX,
-                clientY: clickY,
-                button: 0,
-                buttons: 1
+                clientX: clickX, clientY: clickY, button: 0, buttons: 1
             };
 
             uniqueTargets.forEach(tgt => {
-                eventTypes.forEach(type => {
-                    try { tgt.dispatchEvent(new MouseEvent(type, eventOptions)); } catch (_) {}
-                });
-                if (typeof tgt.click === 'function') {
-                    try { tgt.click(); } catch (_) {}
-                }
+                eventTypes.forEach(type => { try { tgt.dispatchEvent(new MouseEvent(type, eventOptions)); } catch (_) {} });
+                if (typeof tgt.click === 'function') { try { tgt.click(); } catch (_) {} }
             });
 
             clearTask();
             gui?.log('✅ ĐÃ KÍCH HOẠT NÚT THÀNH CÔNG!', 'info');
+            showToast('🎯 Đã bấm nút lấy mã thành công!', 'info');
         }, 500);
     }
 
@@ -464,7 +422,10 @@
         setTimeout(() => { try { dot.remove(); } catch (_) {} }, 2000);
     }
 
-    // MAIN GUI INTERFACE
+    // =============================================================
+    // 2. MAIN GUI INTERFACE
+    // =============================================================
+
     class MainGUI {
         constructor() {
             this.container = null;
@@ -495,7 +456,6 @@
 
             this.container = document.createElement('div');
             this.container.id = 'mrdon-main-gui';
-
             this.container.style.cssText = `
                 position: fixed; top: 20px; right: 20px; width: 320px;
                 background: #181825; color: #cdd6f4; border: 2px solid #cba6f7;
@@ -505,14 +465,14 @@
             `;
 
             const header = document.createElement('div');
-            header.style.cssText = 'font-weight: bold; color: #cba6f7; margin-bottom: 8px; display: flex; justify-content: space-between; cursor: move;';
+            header.style.cssText = 'font-weight: bold; color: #cba6f7; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: move;';
 
             const title = document.createElement('span');
-            title.textContent = '⚡ SEO Bypass Engine v6.2.1';
+            title.textContent = '⚡ SEO Bypass Engine v7.1';
 
             const shortcut = document.createElement('span');
-            shortcut.style.cssText = 'font-size: 10px; color: #a6e3a1;';
-            shortcut.textContent = '[Alt+Shift+G]';
+            shortcut.style.cssText = 'font-size: 10px; color: #a6e3a1; background: #313244; padding: 2px 6px; border-radius: 4px;';
+            shortcut.textContent = 'Alt+Shift+G';
 
             header.append(title, shortcut);
             this.container.appendChild(header);
@@ -530,21 +490,21 @@
             this.container.appendChild(this.inputDomain);
 
             const btnGroup = document.createElement('div');
-            btnGroup.style.cssText = 'display: flex; gap: 6px;';
+            btnGroup.style.cssText = 'display: flex; gap: 6px; margin-bottom: 8px;';
 
             const startBtn = document.createElement('button');
-            startBtn.textContent = 'BẮT ĐẦU';
+            startBtn.textContent = '▶ BẮT ĐẦU';
             startBtn.style.cssText = 'flex: 1; background: #cba6f7; color: #11111b; border: none; padding: 8px; font-weight: bold; border-radius: 6px; cursor: pointer;';
 
             const resetBtn = document.createElement('button');
-            resetBtn.textContent = 'XÓA TASK';
+            resetBtn.textContent = '🧹 XÓA TASK';
             resetBtn.style.cssText = 'flex: 1; background: #f38ba8; color: #11111b; border: none; padding: 8px; font-weight: bold; border-radius: 6px; cursor: pointer;';
 
             btnGroup.append(startBtn, resetBtn);
             this.container.appendChild(btnGroup);
 
             this.logConsole = document.createElement('div');
-            this.logConsole.style.cssText = 'background: #11111b; border: 1px solid #313244; height: 110px; margin-top: 8px; padding: 6px; overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-size: 11px;';
+            this.logConsole.style.cssText = 'background: #11111b; border: 1px solid #313244; height: 110px; padding: 6px; overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-size: 11px;';
 
             this.container.appendChild(this.logConsole);
             (document.body || document.documentElement).appendChild(this.container);
@@ -578,6 +538,7 @@
 
                 saveTask(task);
                 this.log(`🚀 Giữ Tab gốc. Mở Google tìm: ${domain}`, 'info');
+                showToast(`🔎 Đang tìm kiếm trên Google: ${keyword}`);
                 window.open(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, '_blank');
             });
 
@@ -586,11 +547,12 @@
                 this.inputKeyword.value = '';
                 this.inputDomain.value = '';
                 this.log('🧹 Đã dọn dẹp bộ nhớ!', 'warn');
+                showToast('🧹 Đã xóa thông tin Task!', 'warn');
             });
         }
 
         styleInput(input) {
-            input.style.cssText = 'width: 95%; background: #313244; border: 1px solid #45475a; color: #cdd6f4; padding: 7px; border-radius: 6px; margin-bottom: 6px; outline: none; font-size: 12px;';
+            input.style.cssText = 'width: 100%; box-sizing: border-box; background: #313244; border: 1px solid #45475a; color: #cdd6f4; padding: 7px; border-radius: 6px; margin-bottom: 6px; outline: none; font-size: 12px;';
         }
 
         makeDraggable(header) {
@@ -641,7 +603,10 @@
         }
     }
 
-    // GOOGLE SEARCH HANDLER
+    // =============================================================
+    // 3. GOOGLE SEARCH HANDLER
+    // =============================================================
+
     class GoogleSearchHandler {
         static handle(task, gui) {
             gui?.log(`🔍 Quét link mờ trùng khớp: "${task.domain}"...`, 'info');
@@ -665,6 +630,7 @@
 
                 const { element, url, score } = result;
                 gui?.log(`✅ Chọn link (điểm ${score.toFixed(1)}): ${url}`, 'info');
+                showToast(`🎯 Tìm thấy trang web đích!`, 'info');
 
                 task.step = 'BYPASSING';
                 task.matchedUrl = url;
@@ -695,6 +661,7 @@
 
                     if (!nextBtn) {
                         gui?.log(`❌ Không tìm thấy link cho "${task.domain}".`, 'err');
+                        showToast(`❌ Không tìm thấy trang đích!`, 'err');
                         return;
                     }
 
@@ -716,13 +683,18 @@
         }
     }
 
-    // TARGET PAGE & INTERMEDIATE PAGE HANDLER
+    // =============================================================
+    // 4. TARGET PAGE & INTERMEDIATE PAGE HANDLER
+    // =============================================================
+
     class TargetPageHandler {
         static handle(task, gui) {
-            gui?.log('🌐 Đang quét tự động nút lấy mã (Ontop & Gtraffic)...', 'info');
+            gui?.log('🌐 Đang quét tự động nút lấy mã (Ontop, GTraffic, Traffic123, 1s.design...)...', 'info');
 
             let attempts = 0;
             let direction = 1;
+
+            TargetPageHandler.removeOverlayAds();
 
             const timer = setInterval(() => {
                 attempts++;
@@ -749,6 +721,20 @@
                     window.scrollBy({ top: scrollStep * direction, behavior: 'smooth' });
                 }
             }, TARGET_INTERVAL);
+        }
+
+        static removeOverlayAds() {
+            try {
+                const overlays = document.querySelectorAll('div[class*="popup"], div[id*="popup"], div[class*="overlay"], div[id*="overlay"]');
+                overlays.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    if (style.position === 'fixed' || style.position === 'absolute') {
+                        if (parseInt(style.zIndex) > 1000) {
+                            el.remove();
+                        }
+                    }
+                });
+            } catch (_) {}
         }
 
         static scanNodeAllLayers() {
@@ -799,7 +785,7 @@
                 '#traffic-button-no__arrow', '.traffic-button__content', '[class*="layma"]',
                 '[id*="layma"]', '[class*="l4m"]', '[id*="l4m"]', 'button[class*="traffic"]',
                 'a[class*="traffic"]', 'div[class*="traffic"]', '#btn-lay-ma', '.btn-lay-ma',
-                '#getcode', '.getcode'
+                '#getcode', '.getcode', '[id*="1sdesign"]', '[class*="1sdesign"]'
             ];
 
             for (const selector of allSelectors) {
@@ -861,8 +847,13 @@
             const isCodeValid = (text) => {
                 if (!text) return false;
                 const clean = text.trim();
-                if (clean.length < 4 || clean.length > 30) return false;
-                if (/^\d+$/.test(clean)) return false;
+                if (clean.length < 4 || clean.length > 35) return false;
+
+                if (/^\d+$/.test(clean)) {
+                    const num = parseInt(clean, 10);
+                    if (num <= 120) return false;
+                }
+
                 if (/^(code|get code|mã code|pass|password|lấy mã|lay ma|wait|loading|click|xem mã)$/i.test(clean)) return false;
                 if (/lấy mã|chờ|wait|click|vui lòng|giây|seconds|download|chờ duyệt|bấm vào/i.test(clean)) return false;
                 return true;
@@ -888,6 +879,7 @@
                                 if (reCheckVal === '0') {
                                     extracted = true;
                                     gui?.log('🔄 Mã bị lỗi "0"! Đang tự động Reload trang...', 'err');
+                                    showToast('🔄 Mã bị kẹt 0s, đang tải lại trang...', 'err');
                                     location.reload();
                                 } else {
                                     zeroErrorTimer = null;
@@ -903,6 +895,7 @@
                         if (zeroErrorTimer) clearTimeout(zeroErrorTimer);
                         extracted = true;
                         gui?.log(`🎉 BẮT ĐƯỢC MÃ THẬT: [${val}]`, 'info');
+                        showToast(`🎉 Đã bắt được mã: ${val}`, 'info');
 
                         GM_setValue(CODE_STORAGE_KEY, val);
 
@@ -914,7 +907,7 @@
                         document.title = `✅ [ĐÃ COPY MÃ: ${val}] - ${document.title}`;
 
                         gui?.log('🚪 Đã lấy xong mã! Tự động tắt Tab...', 'info');
-                        setTimeout(() => { try { window.close(); } catch (_) {} }, 500);
+                        setTimeout(() => { try { window.close(); } catch (_) {} }, 600);
                         break;
                     }
                 }
@@ -936,9 +929,12 @@
         }
     }
 
-    // TỰ ĐỘNG DÁN MÃ VÀO TRANG ĐÍCH (ĐÃ FIX: CHỈ ĐIỀN VÀ GỬI 1 LẦN DUY NHẤT)
+    // =============================================================
+    // 5. TỰ ĐỘNG DÁN MÃ VÀO TRANG ĐÍCH (SINGLE SUBMIT LOCK)
+    // =============================================================
+
     function handleAutoFillAndSubmit(gui) {
-        let isSubmitted = false; // Cờ khóa trạng thái gửi mã
+        let isSubmitted = false;
 
         const trySubmitCode = (savedCode) => {
             if (!savedCode || isSubmitted) return;
@@ -948,7 +944,7 @@
 
             const executeFillAndWatch = () => {
                 if (document.readyState !== 'complete') {
-                    setTimeout(executeFillAndWatch, 500);
+                    setTimeout(executeFillAndWatch, 400);
                     return;
                 }
 
@@ -961,9 +957,9 @@
                         );
                         if (!inputEl) return false;
 
-                        // Điền mã vào ô duy nhất 1 lần
                         if (inputEl.value !== savedCode) {
                             gui?.log(`⚡ Tiến hành điền mã vào ô: [${savedCode}]`, 'info');
+                            showToast(`⚡ Đang điền mã: ${savedCode}`);
                             inputEl.focus();
                             setNativeValue(inputEl, savedCode);
                         }
@@ -975,7 +971,6 @@
                         );
 
                         if (submitBtn) {
-                            // Đặt cờ khóa ngay lập tức để không chạy lại lần 2
                             isSubmitted = true;
                             if (watchdogTimer) clearInterval(watchdogTimer);
 
@@ -984,8 +979,8 @@
                             submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
 
                             gui?.log('🚀 Đang gửi mã (Xác nhận 1 lần duy nhất)...', 'info');
+                            showToast('🚀 Đã kích hoạt gửi mã!', 'info');
 
-                            // Xóa mã trong bộ nhớ ngay để tránh gửi lại trên tab khác/reload
                             GM_deleteValue(CODE_STORAGE_KEY);
 
                             setTimeout(() => {
@@ -1003,22 +998,18 @@
                         attempts++;
                         if (fillAndCheck() || attempts > 20 || isSubmitted) {
                             clearInterval(watchdogTimer);
-                            if (attempts > 20) {
-                                GM_deleteValue(CODE_STORAGE_KEY);
-                            }
+                            if (attempts > 20) GM_deleteValue(CODE_STORAGE_KEY);
                         }
-                    }, 500);
+                    }, 400);
 
-                }, 1000);
+                }, 800);
             };
 
             executeFillAndWatch();
         };
 
         const existingCode = GM_getValue(CODE_STORAGE_KEY, null);
-        if (existingCode) {
-            trySubmitCode(existingCode);
-        }
+        if (existingCode) trySubmitCode(existingCode);
 
         try {
             GM_addValueChangeListener(CODE_STORAGE_KEY, (name, oldValue, newValue, remote) => {
@@ -1030,7 +1021,10 @@
         } catch (_) {}
     }
 
-    // MAIN ENTRY POINT
+    // =============================================================
+    // 6. MAIN ENTRY POINT
+    // =============================================================
+
     function main() {
         const gui = new MainGUI();
         gui.init(() => {
