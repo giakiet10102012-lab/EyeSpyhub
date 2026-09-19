@@ -1,262 +1,561 @@
 // ==UserScript==
-// @name         UgPhone Session Manager Pro
+// @name         UgPhone Multi-Account Manager Pro
 // @namespace    https://ugphone.com/
-// @version      2.0
-// @description  Giao diện Inject Session cao cấp dành riêng cho UgPhone, không lưu cứng dữ liệu, tự động reload
+// @version      3.0
+// @description  Quản lý, chuyển đổi nhiều acc UgPhone 1-click, lưu lịch sử, giao diện đặt ngay phía trên nút bấm
 // @author       Gemini
 // @match        https://*.ugphone.com/*
 // @match        http://*.ugphone.com/*
 // @run-at       document-idle
-// @grant        none
+// @grant        GM_setValue
+// @grant        GM_getValue
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    // 1. Nhúng CSS giao diện phong cách Glassmorphism & Cyberpunk Neon
+    // 1. Quản lý lưu trữ thông qua GM Storage (chống bị web UgPhone xóa nhầm)
+    const getSavedAccounts = () => {
+        try {
+            if (typeof GM_getValue === 'function') return GM_getValue('ug_accounts_vault', []);
+        } catch (e) {}
+        return JSON.parse(localStorage.getItem('__ug_accounts_vault__') || '[]');
+    };
+
+    const saveAccounts = (accList) => {
+        try {
+            if (typeof GM_setValue === 'function') {
+                GM_setValue('ug_accounts_vault', accList);
+                return;
+            }
+        } catch (e) {}
+        localStorage.setItem('__ug_accounts_vault__', JSON.stringify(accList));
+    };
+
+    // 2. Logic nạp Session & Reload
+    const applySessionAndReload = (sessionData) => {
+        for (const [key, value] of Object.entries(sessionData)) {
+            const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            localStorage.setItem(key, valStr);
+            document.cookie = `${key}=${encodeURIComponent(valStr)}; path=/; domain=.ugphone.com; max-age=86400`;
+        }
+        window.location.reload();
+    };
+
+    // 3. Nhúng CSS Giao diện Cyber-Glassmorphism dọc
     const style = document.createElement('style');
     style.textContent = `
-        .ug-floating-btn {
+        /* Nút kích hoạt tròn góc phải dưới */
+        .ug-main-btn {
             position: fixed;
-            bottom: 25px;
-            right: 25px;
-            width: 54px;
-            height: 54px;
+            bottom: 20px;
+            right: 20px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
-            box-shadow: 0 6px 20px rgba(168, 85, 247, 0.45), 0 0 15px rgba(99, 102, 241, 0.3);
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+            box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 999999;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            z-index: 9999999;
+            transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 2px solid rgba(255, 255, 255, 0.25);
             user-select: none;
         }
-        .ug-floating-btn:hover {
-            transform: scale(1.12) rotate(8deg);
-            box-shadow: 0 10px 30px rgba(236, 72, 153, 0.6), 0 0 25px rgba(168, 85, 247, 0.5);
+        .ug-main-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 8px 25px rgba(219, 39, 119, 0.6);
         }
-        .ug-floating-btn:active {
-            transform: scale(0.95);
-        }
-        .ug-floating-btn svg {
-            width: 28px;
-            height: 28px;
+        .ug-main-btn svg {
+            width: 26px;
+            height: 26px;
             fill: #ffffff;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
         }
 
-        .ug-modal-overlay {
+        /* Bảng Menu Dọc đặt ngay trên nút */
+        .ug-dock-panel {
             display: none;
             position: fixed;
-            inset: 0;
-            background: rgba(10, 12, 20, 0.65);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            z-index: 1000000;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .ug-modal-overlay.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 1;
-        }
-
-        .ug-modal-card {
-            width: 480px;
-            max-width: 90vw;
-            background: rgba(18, 22, 36, 0.85);
+            bottom: 82px;
+            right: 20px;
+            width: 340px;
+            height: 520px;
+            background: rgba(13, 17, 28, 0.94);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 18px;
-            padding: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.15);
-            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(99, 102, 241, 0.2);
+            z-index: 9999998;
+            flex-direction: column;
+            overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            transform: scale(0.95);
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            color: #e2e8f0;
+            animation: ugSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .ug-modal-overlay.active .ug-modal-card {
-            transform: scale(1);
+        .ug-dock-panel.active {
+            display: flex;
+        }
+        @keyframes ugSlideUp {
+            from { opacity: 0; transform: translateY(12px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        .ug-header {
+        /* Header */
+        .ug-panel-header {
+            padding: 12px 14px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
         }
-        .ug-header-title {
-            font-size: 17px;
+        .ug-panel-title {
+            font-size: 14px;
             font-weight: 700;
-            letter-spacing: 0.5px;
-            background: linear-gradient(90deg, #a5b4fc, #f472b6);
+            background: linear-gradient(90deg, #818cf8, #f472b6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
-        .ug-close-icon {
+        .ug-close-btn {
             cursor: pointer;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
+            font-size: 14px;
             color: #94a3b8;
+            padding: 2px 6px;
+            border-radius: 4px;
             transition: 0.2s;
         }
-        .ug-close-icon:hover {
-            background: rgba(239, 68, 68, 0.2);
+        .ug-close-btn:hover {
             color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
         }
 
-        .ug-textarea {
-            width: 100%;
-            height: 190px;
-            background: rgba(11, 14, 23, 0.75);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 10px;
-            padding: 12px;
-            color: #38bdf8;
-            font-family: "Fira Code", Consolas, Monaco, monospace;
+        /* Tab Controller */
+        .ug-tab-nav {
+            display: flex;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.25);
+            gap: 6px;
+        }
+        .ug-tab-item {
+            flex: 1;
+            text-align: center;
+            padding: 7px 0;
             font-size: 12px;
-            line-height: 1.5;
-            resize: vertical;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #94a3b8;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .ug-tab-item.active {
+            background: rgba(99, 102, 241, 0.25);
+            color: #38bdf8;
+            box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Body Views */
+        .ug-view-content {
+            flex: 1;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .ug-view-tab {
+            display: none;
+            height: 100%;
+            flex-direction: column;
+        }
+        .ug-view-tab.active {
+            display: flex;
+        }
+
+        /* Form Nhập Session */
+        .ug-input-label {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        .ug-input-text {
+            width: 100%;
+            background: rgba(18, 24, 38, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 7px;
+            padding: 8px 10px;
+            font-size: 12px;
+            color: #f1f5f9;
             outline: none;
             box-sizing: border-box;
-            transition: border-color 0.2s;
+            margin-bottom: 10px;
         }
-        .ug-textarea:focus {
-            border-color: #818cf8;
-            box-shadow: 0 0 10px rgba(129, 140, 248, 0.25);
+        .ug-input-text:focus {
+            border-color: #6366f1;
         }
-        .ug-textarea::placeholder {
-            color: #475569;
-            font-family: sans-serif;
-            font-size: 12px;
+        .ug-input-area {
+            flex: 1;
+            width: 100%;
+            background: rgba(18, 24, 38, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 7px;
+            padding: 8px 10px;
+            font-size: 11px;
+            font-family: Consolas, monospace;
+            color: #38bdf8;
+            outline: none;
+            resize: none;
+            box-sizing: border-box;
+            margin-bottom: 10px;
         }
-
-        .ug-footer {
+        .ug-input-area:focus {
+            border-color: #6366f1;
+        }
+        .ug-btn-group {
             display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-top: 18px;
+            gap: 8px;
         }
-        .ug-btn {
+        .ug-btn-action {
+            flex: 1;
+            padding: 8px 0;
             border: none;
-            border-radius: 9px;
-            padding: 10px 18px;
-            font-size: 13px;
+            border-radius: 7px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
+            transition: 0.2s;
+        }
+        .ug-btn-save {
+            background: rgba(255, 255, 255, 0.08);
+            color: #cbd5e1;
+        }
+        .ug-btn-save:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+        }
+        .ug-btn-apply {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: #ffffff;
+        }
+        .ug-btn-apply:hover {
+            opacity: 0.92;
+            transform: translateY(-1px);
+        }
+
+        /* Danh Sách Tài Khoản */
+        .ug-acc-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-right: 4px;
+        }
+        .ug-acc-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .ug-acc-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+        .ug-acc-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
             transition: all 0.2s;
         }
-        .ug-btn-cancel {
-            background: rgba(255, 255, 255, 0.07);
-            color: #94a3b8;
+        .ug-acc-card:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            background: rgba(255, 255, 255, 0.05);
         }
-        .ug-btn-cancel:hover {
-            background: rgba(255, 255, 255, 0.12);
-            color: #f1f5f9;
+        .ug-acc-card.current {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.06);
         }
-        .ug-btn-submit {
-            background: linear-gradient(135deg, #4f46e5, #9333ea);
+        .ug-acc-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ug-acc-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #f8fafc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 170px;
+        }
+        .ug-badge-active {
+            font-size: 9px;
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-weight: 700;
+        }
+        .ug-acc-id {
+            font-size: 10px;
+            color: #64748b;
+            font-family: monospace;
+        }
+        .ug-acc-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .ug-btn-login-acc {
+            flex: 1;
+            padding: 5px 0;
+            background: linear-gradient(135deg, #059669, #10b981);
             color: #ffffff;
-            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+            border: none;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
         }
-        .ug-btn-submit:hover {
-            background: linear-gradient(135deg, #4338ca, #7e22ce);
-            box-shadow: 0 6px 18px rgba(147, 51, 234, 0.45);
-            transform: translateY(-1px);
+        .ug-btn-login-acc:hover {
+            filter: brightness(1.1);
+        }
+        .ug-btn-mini {
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border: none;
+            border-radius: 6px;
+            color: #94a3b8;
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .ug-btn-mini:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .ug-btn-del:hover {
+            color: #f87171;
+            background: rgba(239, 68, 68, 0.15);
+        }
+        .ug-empty-hint {
+            text-align: center;
+            margin-top: 50px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.6;
         }
     `;
     document.head.appendChild(style);
 
-    // 2. Tạo nút mở giao diện (Icon Cloud Phone công nghệ)
-    const toggleBtn = document.createElement('div');
-    toggleBtn.className = 'ug-floating-btn';
-    toggleBtn.title = 'Mở UgPhone Injector';
-    toggleBtn.innerHTML = `
+    // 4. Tạo Nút Tròn Mở Menu (Góc phải dưới)
+    const mainBtn = document.createElement('div');
+    mainBtn.className = 'ug-main-btn';
+    mainBtn.title = 'UgPhone Account Hub';
+    mainBtn.innerHTML = `
         <svg viewBox="0 0 24 24">
-            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
         </svg>
     `;
-    document.body.appendChild(toggleBtn);
+    document.body.appendChild(mainBtn);
 
-    // 3. Tạo khung Popup Modal
-    const overlay = document.createElement('div');
-    overlay.className = 'ug-modal-overlay';
-    overlay.innerHTML = `
-        <div class="ug-modal-card">
-            <div class="ug-header">
-                <div class="ug-header-title">
-                    <span style="font-size: 18px;">⚡</span> UGPHONE SESSION INJECTOR
-                </div>
-                <div class="ug-close-icon" id="ugCloseBtn">✕</div>
+    // 5. Tạo Khung Menu Dọc Nằm Trên Nút Bấm
+    const panel = document.createElement('div');
+    panel.className = 'ug-dock-panel';
+    panel.innerHTML = `
+        <div class="ug-panel-header">
+            <div class="ug-panel-title">
+                <span>⚡</span> UGPHONE HUB
             </div>
-            <textarea class="ug-textarea" id="ugPayloadInput" placeholder="Dán toàn bộ mã JSON session của bạn vào đây...&#10;Ví dụ:&#10;{&#10;  &quot;UGPHONE-ID&quot;: &quot;...&quot;,&#10;  &quot;UGPHONE-Token&quot;: &quot;...&quot;&#10;}"></textarea>
-            <div class="ug-footer">
-                <button class="ug-btn ug-btn-cancel" id="ugCancelBtn">Hủy</button>
-                <button class="ug-btn ug-btn-submit" id="ugSubmitBtn">Nạp & Vào Acc</button>
+            <div class="ug-close-btn" id="ugCloseBtn">✕</div>
+        </div>
+
+        <div class="ug-tab-nav">
+            <div class="ug-tab-item active" data-tab="tab-input">📥 Nhập Session</div>
+            <div class="ug-tab-item" data-tab="tab-accounts" id="ugTabAccountsTitle">👥 Acc (<span id="ugAccCount">0</span>)</div>
+        </div>
+
+        <div class="ug-view-content">
+            <!-- TAB 1: NHẬP SESSION -->
+            <div class="ug-view-tab active" id="tab-input">
+                <div class="ug-input-label">TÊN GỢI NHỚ</div>
+                <input class="ug-input-text" id="ugAccNameInput" placeholder="Ví dụ: Acc Chính, Acc Treo Game 01..." />
+                
+                <div class="ug-input-label">DỮ LIỆU LOCALSTORAGE (JSON)</div>
+                <textarea class="ug-input-area" id="ugJsonInput" placeholder="Dán toàn bộ mã JSON session của bạn vào đây..."></textarea>
+                
+                <div class="ug-btn-group">
+                    <button class="ug-btn-action ug-btn-save" id="ugSaveOnlyBtn">Chỉ Lưu</button>
+                    <button class="ug-btn-action ug-btn-apply" id="ugSaveAndLoginBtn">Lưu & Vào Ngay</button>
+                </div>
+            </div>
+
+            <!-- TAB 2: DANH SÁCH ACC -->
+            <div class="ug-view-tab" id="tab-accounts">
+                <div class="ug-acc-list" id="ugAccContainer"></div>
             </div>
         </div>
     `;
-    document.body.appendChild(overlay);
+    document.body.appendChild(panel);
 
-    const inputArea = overlay.querySelector('#ugPayloadInput');
-    const closeBtn = overlay.querySelector('#ugCloseBtn');
-    const cancelBtn = overlay.querySelector('#ugCancelBtn');
-    const submitBtn = overlay.querySelector('#ugSubmitBtn');
+    // 6. Xử lý logic Tab & UI
+    const tabItems = panel.querySelectorAll('.ug-tab-item');
+    const tabViews = panel.querySelectorAll('.ug-view-tab');
+    const nameInput = panel.querySelector('#ugAccNameInput');
+    const jsonInput = panel.querySelector('#ugJsonInput');
+    const accContainer = panel.querySelector('#ugAccContainer');
+    const accCount = panel.querySelector('#ugAccCount');
 
-    // Bật/tắt Modal
-    function openModal() {
-        overlay.classList.add('active');
-        inputArea.focus();
+    function switchTab(targetTabId) {
+        tabItems.forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.tab === targetTabId);
+        });
+        tabViews.forEach(view => {
+            view.classList.toggle('active', view.id === targetTabId);
+        });
+        if (targetTabId === 'tab-accounts') {
+            renderAccountList();
+        }
     }
 
-    function closeModal() {
-        overlay.classList.remove('active');
-    }
-
-    toggleBtn.addEventListener('click', openModal);
-    closeBtn.addEventListener('click', closeModal);
-    cancelBtn.addEventListener('click', closeModal);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeModal();
+    tabItems.forEach(tab => {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
-    // 4. Xử lý nạp dữ liệu và tải lại trang
-    submitBtn.addEventListener('click', () => {
-        const raw = inputArea.value.trim();
-        if (!raw) {
-            alert('Vui lòng dán chuỗi JSON session trước khi nạp!');
+    // Toggle menu
+    mainBtn.addEventListener('click', () => {
+        panel.classList.toggle('active');
+        if (panel.classList.contains('active')) {
+            renderAccountList();
+        }
+    });
+
+    panel.querySelector('#ugCloseBtn').addEventListener('click', () => {
+        panel.classList.remove('active');
+    });
+
+    // 7. Render danh sách tài khoản
+    function renderAccountList() {
+        const accounts = getSavedAccounts();
+        accCount.textContent = accounts.length;
+        accContainer.innerHTML = '';
+
+        if (accounts.length === 0) {
+            accContainer.innerHTML = `
+                <div class="ug-empty-hint">
+                    Chưa có tài khoản nào được lưu.<br>
+                    Hãy sang tab <b>Nhập Session</b> để thêm tài khoản mới!
+                </div>
+            `;
+            return;
+        }
+
+        const currentLocalId = localStorage.getItem('UGPHONE-ID');
+
+        accounts.forEach((acc, index) => {
+            const isCurrent = acc.data && acc.data['UGPHONE-ID'] === currentLocalId;
+            const deviceId = acc.data && acc.data['UGPHONE-ID'] ? acc.data['UGPHONE-ID'] : 'N/A';
+
+            const card = document.createElement('div');
+            card.className = `ug-acc-card ${isCurrent ? 'current' : ''}`;
+            card.innerHTML = `
+                <div class="ug-acc-top">
+                    <div class="ug-acc-name" title="${acc.name}">${acc.name}</div>
+                    ${isCurrent ? '<span class="ug-badge-active">Đang dùng</span>' : ''}
+                </div>
+                <div class="ug-acc-id">ID: ${deviceId.substring(0, 16)}...</div>
+                <div class="ug-acc-actions">
+                    <button class="ug-btn-login-acc" data-idx="${index}">▶ Vào Acc</button>
+                    <button class="ug-btn-mini ug-btn-rename" data-idx="${index}" title="Đổi tên">✏️</button>
+                    <button class="ug-btn-mini ug-btn-del" data-idx="${index}" title="Xóa">🗑️</button>
+                </div>
+            `;
+
+            // 1-Click Vào Acc
+            card.querySelector('.ug-btn-login-acc').onclick = () => {
+                applySessionAndReload(acc.data);
+            };
+
+            // Đổi tên tài khoản
+            card.querySelector('.ug-btn-rename').onclick = () => {
+                const newName = prompt('Nhập tên mới cho tài khoản:', acc.name);
+                if (newName && newName.trim() !== '') {
+                    accounts[index].name = newName.trim();
+                    saveAccounts(accounts);
+                    renderAccountList();
+                }
+            };
+
+            // Xóa tài khoản
+            card.querySelector('.ug-btn-del').onclick = () => {
+                if (confirm(`Bạn có chắc chắn muốn xóa tài khoản "${acc.name}" không?`)) {
+                    accounts.splice(index, 1);
+                    saveAccounts(accounts);
+                    renderAccountList();
+                }
+            };
+
+            accContainer.appendChild(card);
+        });
+    }
+
+    // 8. Xử lý Lưu tài khoản từ Tab 1
+    function handleSave(autoLogin = false) {
+        const rawJson = jsonInput.value.trim();
+        let accName = nameInput.value.trim();
+
+        if (!rawJson) {
+            alert('Vui lòng dán chuỗi JSON session trước!');
             return;
         }
 
         try {
-            const data = JSON.parse(raw);
+            const parsedData = JSON.parse(rawJson);
+            const accounts = getSavedAccounts();
 
-            // Nạp vào LocalStorage và Cookie
-            for (const [key, value] of Object.entries(data)) {
-                const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                localStorage.setItem(key, valStr);
-                document.cookie = `${key}=${encodeURIComponent(valStr)}; path=/; domain=.ugphone.com; max-age=86400`;
+            if (!accName) {
+                accName = `Acc ${accounts.length + 1}`;
             }
 
-            // Tự động tải lại trang ngay lập tức
-            window.location.reload();
-        } catch (err) {
-            alert('Dữ liệu JSON không đúng định dạng! Chi tiết: ' + err.message);
+            const newAcc = {
+                id: 'acc_' + Date.now(),
+                name: accName,
+                createdAt: Date.now(),
+                data: parsedData
+            };
+
+            accounts.unshift(newAcc);
+            saveAccounts(accounts);
+
+            // Xóa trắng form
+            nameInput.value = '';
+            jsonInput.value = '';
+
+            if (autoLogin) {
+                applySessionAndReload(parsedData);
+            } else {
+                alert(`Đã lưu tài khoản "${accName}" thành công!`);
+                switchTab('tab-accounts');
+            }
+        } catch (e) {
+            alert('Dữ liệu JSON không hợp lệ! Vui lòng kiểm tra lại.\nLỗi: ' + e.message);
         }
-    });
+    }
+
+    panel.querySelector('#ugSaveOnlyBtn').onclick = () => handleSave(false);
+    panel.querySelector('#ugSaveAndLoginBtn').onclick = () => handleSave(true);
+
+    // Khởi chạy lấy số lượng acc ban đầu
+    accCount.textContent = getSavedAccounts().length;
 })();
