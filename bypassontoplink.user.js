@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google SEO Traffic & Smart Bypass Engine
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
-// @description  Bypass SEO Google cao cấp: Tìm kiếm tự động, phân tích URL đa tầng, lật trang, chống kẹt số 0 & tự điền mã (Miễn nhiễm nuốt DOM).
+// @version      1.1.2
+// @description  Bypass SEO Google cao cấp: Tìm kiếm tự động, phân tích URL đa tầng, lật trang, chống kẹt số 0 & tự điền mã.
 // @author       MrDon & Assistant
 // @match        *://*/*
 // @include      *
@@ -34,7 +34,7 @@
     const BANNER_KEYWORDS = ['banner', 'popup', 'float', 'close', 'openbanner', 'ad_', 'advertisement', 'overlay'];
 
     // =============================================================
-    // 1. LỚP LƯU TRỮ AN TOÀN (HYBRID STORAGE)
+    // 1. LỚP LƯU TRỮ HYBRID AN TOÀN
     // =============================================================
 
     const Storage = {
@@ -364,19 +364,17 @@
             }
 
             clearTask();
-            gui?.log('✅ KÍCH HOẠT THÀNH CÔNG!', 'info');
+            gui?.log('✅ KÍCH HOẠT NÚT THÀNH CÔNG!', 'info');
             gui?.toast('🎯 Đã bấm nút lấy mã!', 'info');
         }, 400);
     }
 
     // =============================================================
-    // 4. GIAO DIỆN SHADOW DOM BẤT TỬ (IMMORTAL GUI)
+    // 4. BẢNG ĐIỀU KHIỂN DOM TRỰC TIẾP (CHUẨN DIAGNOSTIC)
     // =============================================================
 
     class EngineGUI {
         constructor() {
-            this.host = null;
-            this.shadow = null;
             this.panel = null;
             this.floatingBtn = null;
             this.logOutput = null;
@@ -386,151 +384,117 @@
             this.visible = true;
         }
 
-        init() {
-            if (document.getElementById('mrdon-engine-root')) return;
+        render() {
+            const root = document.body || document.documentElement;
+            if (!root) return;
 
-            this.host = document.createElement('div');
-            this.host.id = 'mrdon-engine-root';
-            // Cố định Host ở cấp HTML cao nhất, không bị layout body đè bẹp
-            this.host.style.cssText = 'all: initial !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 0 !important; height: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; border: none !important; margin: 0 !important; padding: 0 !important;';
-
-            this.shadow = this.host.attachShadow({ mode: 'open' });
-
-            const style = document.createElement('style');
-            style.textContent = `
-                *, *::before, *::after { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 0; }
-                .panel {
-                    position: fixed; top: 20px; right: 20px; width: 330px;
-                    background: #181825; color: #cdd6f4; border: 2px solid #89b4fa;
-                    border-radius: 12px; padding: 14px; font-size: 12px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.7); user-select: none;
-                    display: block; z-index: 2147483647; pointer-events: auto;
-                }
-                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: move; }
-                .title { font-weight: 700; color: #89b4fa; font-size: 13px; }
-                .close-btn { cursor: pointer; color: #f38ba8; font-weight: bold; font-size: 14px; padding: 2px 6px; }
-                .close-btn:hover { background: #313244; border-radius: 4px; }
-                input {
-                    width: 100%; background: #313244; border: 1px solid #45475a; color: #cdd6f4;
-                    padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; outline: none; font-size: 12px;
-                }
-                input:focus { border-color: #89b4fa; }
-                .btn-group { display: flex; gap: 8px; margin-bottom: 10px; }
-                .btn {
-                    flex: 1; border: none; padding: 8px; font-weight: 700; border-radius: 6px; cursor: pointer; font-size: 12px;
-                }
-                .btn-start { background: #89b4fa; color: #11111b; }
-                .btn-clear { background: #f38ba8; color: #11111b; }
-                .log-box {
-                    background: #11111b; border: 1px solid #313244; height: 110px; padding: 8px;
-                    overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-family: monospace; font-size: 11px;
-                }
-                .log-line { margin: 2px 0; word-break: break-word; }
-                .floating-btn {
-                    position: fixed; bottom: 20px; left: 20px; width: 44px; height: 44px;
-                    background: #89b4fa; color: #11111b; border-radius: 50%;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 22px; font-weight: bold; cursor: pointer;
-                    box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 2147483646;
-                    transition: transform 0.2s; user-select: none; pointer-events: auto;
-                }
-                .floating-btn:hover { transform: scale(1.1); }
-                .toast-box {
-                    position: fixed; bottom: 24px; right: 24px; z-index: 2147483647;
-                    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
-                }
-                .toast {
-                    padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.4); pointer-events: auto;
-                    transition: all 0.25s ease-out; opacity: 1; transform: translateY(0);
-                }
-            `;
-            this.shadow.appendChild(style);
-
-            this.panel = document.createElement('div');
-            this.panel.className = 'panel';
-            this.panel.innerHTML = `
-                <div class="header">
-                    <span class="title">⚡ SEO Traffic Engine v1.1.1</span>
-                    <span class="close-btn" title="Ẩn (Alt+Shift+G)">✖</span>
-                </div>
-                <input type="text" class="input-kw" placeholder="Từ khóa Google...">
-                <input type="text" class="input-dom" placeholder="Domain đích / link gần đúng...">
-                <div class="btn-group">
-                    <button class="btn btn-start">▶ Bắt Đầu</button>
-                    <button class="btn btn-clear">🧹 Xóa Task</button>
-                </div>
-                <div class="log-box"></div>
-            `;
-
-            this.floatingBtn = document.createElement('div');
-            this.floatingBtn.className = 'floating-btn';
-            this.floatingBtn.title = 'Mở / Ẩn SEO Tool (Alt+Shift+G)';
-            this.floatingBtn.textContent = '⚡';
-
-            this.toastContainer = document.createElement('div');
-            this.toastContainer.className = 'toast-box';
-
-            this.shadow.append(this.panel, this.floatingBtn, this.toastContainer);
-
-            this.keywordInput = this.panel.querySelector('.input-kw');
-            this.domainInput = this.panel.querySelector('.input-dom');
-            this.logOutput = this.panel.querySelector('.log-box');
-
-            this.panel.querySelector('.close-btn').onclick = () => this.toggle();
-            this.floatingBtn.onclick = () => this.toggle();
-
-            this.panel.querySelector('.btn-start').onclick = () => {
-                const keyword = this.keywordInput.value.trim();
-                const domain = this.domainInput.value.trim();
-
-                if (!keyword || !domain) {
-                    this.toast('Vui lòng nhập cả từ khóa và link đích!', 'warn');
-                    return;
-                }
-
-                saveTask({
-                    keyword,
-                    domain,
-                    originUrl: location.href,
-                    step: 'SEARCHING',
-                    page: 1
-                });
-
-                this.log(`🚀 Mở tab tìm kiếm Google: ${keyword}`, 'info');
-                this.toast(`🔎 Đang tìm kiếm trên Google...`);
-                window.open(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, '_blank');
-            };
-
-            this.panel.querySelector('.btn-clear').onclick = () => {
-                clearTask();
-                this.keywordInput.value = '';
-                this.domainInput.value = '';
-                this.log('🧹 Đã xóa task lưu trữ.', 'warn');
-                this.toast('🧹 Đã dọn dẹp task.', 'warn');
-            };
-
-            this.bindDrag(this.panel.querySelector('.header'));
-
-            const task = getActiveTask();
-            if (task) {
-                this.keywordInput.value = task.keyword || '';
-                this.domainInput.value = task.domain || '';
-                this.log(`🔄 Khôi phục: [${task.domain}]`, 'info');
+            // 1. Toast Container
+            if (!document.getElementById('mrdon-toast-box')) {
+                this.toastContainer = document.createElement('div');
+                this.toastContainer.id = 'mrdon-toast-box';
+                this.toastContainer.style.cssText = 'position:fixed !important;bottom:24px !important;right:24px !important;z-index:2147483647 !important;display:flex !important;flex-direction:column !important;gap:8px !important;pointer-events:none !important;';
+                root.appendChild(this.toastContainer);
+            } else {
+                this.toastContainer = document.getElementById('mrdon-toast-box');
             }
 
-            this.mount();
-        }
+            // 2. Nút tròn góc trái (⚡)
+            if (!document.getElementById('mrdon-floating-btn')) {
+                this.floatingBtn = document.createElement('div');
+                this.floatingBtn.id = 'mrdon-floating-btn';
+                this.floatingBtn.title = 'Mở / Ẩn SEO Tool (Alt+Shift+G)';
+                this.floatingBtn.textContent = '⚡';
+                this.floatingBtn.style.cssText = `
+                    position: fixed !important; bottom: 20px !important; left: 20px !important;
+                    width: 44px !important; height: 44px !important; background: #89b4fa !important;
+                    color: #11111b !important; border-radius: 50% !important;
+                    display: flex !important; align-items: center !important; justify-content: center !important;
+                    font-size: 22px !important; font-weight: bold !important; cursor: pointer !important;
+                    box-shadow: 0 4px 14px rgba(0,0,0,0.5) !important; z-index: 2147483646 !important;
+                    user-select: none !important; pointer-events: auto !important;
+                `;
+                this.floatingBtn.onclick = () => this.toggle();
+                root.appendChild(this.floatingBtn);
+            }
 
-        mount() {
-            // Luôn ưu tiên neo trực tiếp vào html để tránh React/SPA xóa mất
-            const root = document.documentElement || document.body;
-            if (root && !document.getElementById('mrdon-engine-root')) {
-                root.appendChild(this.host);
+            // 3. Bảng điều khiển chính
+            if (!document.getElementById('mrdon-main-panel')) {
+                this.panel = document.createElement('div');
+                this.panel.id = 'mrdon-main-panel';
+                this.panel.style.cssText = `
+                    position: fixed !important; top: 20px !important; right: 20px !important; width: 330px !important;
+                    background: #181825 !important; color: #cdd6f4 !important; border: 2px solid #89b4fa !important;
+                    border-radius: 12px !important; padding: 14px !important; font-family: system-ui, -apple-system, sans-serif !important;
+                    font-size: 12px !important; box-shadow: 0 10px 30px rgba(0,0,0,0.7) !important;
+                    user-select: none !important; display: block !important; z-index: 2147483647 !important;
+                    pointer-events: auto !important; box-sizing: border-box !important;
+                `;
+
+                this.panel.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:move;" id="mrdon-panel-header">
+                        <span style="font-weight:700;color:#89b4fa;font-size:13px;">⚡ SEO Bypass Engine v1.1.2</span>
+                        <span style="cursor:pointer;color:#f38ba8;font-weight:bold;font-size:14px;padding:2px 6px;" id="mrdon-panel-close" title="Ẩn (Alt+Shift+G)">✖</span>
+                    </div>
+                    <input type="text" id="mrdon-input-kw" placeholder="Từ khóa Google..." style="width:100%;box-sizing:border-box;background:#313244;border:1px solid #45475a;color:#cdd6f4;padding:8px 10px;border-radius:6px;margin-bottom:8px;outline:none;font-size:12px;">
+                    <input type="text" id="mrdon-input-dom" placeholder="Domain đích / link gần đúng..." style="width:100%;box-sizing:border-box;background:#313244;border:1px solid #45475a;color:#cdd6f4;padding:8px 10px;border-radius:6px;margin-bottom:8px;outline:none;font-size:12px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <button id="mrdon-btn-start" style="flex:1;background:#89b4fa;color:#11111b;border:none;padding:8px;font-weight:700;border-radius:6px;cursor:pointer;font-size:12px;">▶ Bắt Đầu</button>
+                        <button id="mrdon-btn-clear" style="flex:1;background:#f38ba8;color:#11111b;border:none;padding:8px;font-weight:700;border-radius:6px;cursor:pointer;font-size:12px;">🧹 Xóa Task</button>
+                    </div>
+                    <div id="mrdon-log-box" style="background:#11111b;border:1px solid #313244;height:110px;padding:8px;overflow-y:auto;color:#a6e3a1;border-radius:6px;font-family:monospace;font-size:11px;"></div>
+                `;
+
+                root.appendChild(this.panel);
+
+                this.keywordInput = this.panel.querySelector('#mrdon-input-kw');
+                this.domainInput = this.panel.querySelector('#mrdon-input-dom');
+                this.logOutput = this.panel.querySelector('#mrdon-log-box');
+
+                this.panel.querySelector('#mrdon-panel-close').onclick = () => this.toggle();
+
+                this.panel.querySelector('#mrdon-btn-start').onclick = () => {
+                    const keyword = this.keywordInput.value.trim();
+                    const domain = this.domainInput.value.trim();
+
+                    if (!keyword || !domain) {
+                        this.toast('Vui lòng nhập cả từ khóa và link đích!', 'warn');
+                        return;
+                    }
+
+                    saveTask({
+                        keyword,
+                        domain,
+                        originUrl: location.href,
+                        step: 'SEARCHING',
+                        page: 1
+                    });
+
+                    this.log(`🚀 Mở tab Google: ${keyword}`, 'info');
+                    this.toast(`🔎 Đang tìm kiếm trên Google...`);
+                    window.open(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, '_blank');
+                };
+
+                this.panel.querySelector('#mrdon-btn-clear').onclick = () => {
+                    clearTask();
+                    this.keywordInput.value = '';
+                    this.domainInput.value = '';
+                    this.log('🧹 Đã dọn dẹp task lưu trữ.', 'warn');
+                    this.toast('🧹 Đã xóa task!', 'warn');
+                };
+
+                this.bindDrag(this.panel.querySelector('#mrdon-panel-header'));
+
+                const task = getActiveTask();
+                if (task) {
+                    this.keywordInput.value = task.keyword || '';
+                    this.domainInput.value = task.domain || '';
+                    this.log(`🔄 Khôi phục task: [${task.domain}]`, 'info');
+                }
             }
         }
 
         toggle() {
+            if (!this.panel) return;
             this.visible = !this.visible;
             this.panel.style.display = this.visible ? 'block' : 'none';
         }
@@ -538,7 +502,7 @@
         log(message, type = 'info') {
             const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
             const p = document.createElement('div');
-            p.className = 'log-line';
+            p.style.margin = '2px 0';
             p.style.color = type === 'err' ? '#f38ba8' : type === 'warn' ? '#f9e2af' : '#a6e3a1';
             p.textContent = `[${now}] ${message}`;
 
@@ -550,17 +514,21 @@
         }
 
         toast(message, type = 'info') {
+            if (!this.toastContainer) return;
             const toast = document.createElement('div');
-            toast.className = 'toast';
             const colors = {
                 info: { bg: '#1e1e2e', text: '#a6e3a1', border: '#a6e3a1' },
                 warn: { bg: '#1e1e2e', text: '#f9e2af', border: '#f9e2af' },
                 err: { bg: '#1e1e2e', text: '#f38ba8', border: '#f38ba8' }
             }[type] || { bg: '#1e1e2e', text: '#a6e3a1', border: '#a6e3a1' };
 
-            toast.style.background = colors.bg;
-            toast.style.color = colors.text;
-            toast.style.border = `1px solid ${colors.border}`;
+            toast.style.cssText = `
+                background: ${colors.bg} !important; color: ${colors.text} !important;
+                border: 1px solid ${colors.border} !important; padding: 10px 16px !important;
+                border-radius: 8px !important; font-family: system-ui, sans-serif !important;
+                font-size: 13px !important; font-weight: 600 !important; box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+                pointer-events: auto !important; transition: all 0.25s ease-out !important;
+            `;
             toast.textContent = message;
 
             this.toastContainer.appendChild(toast);
@@ -583,7 +551,7 @@
             };
 
             document.addEventListener('mousemove', (e) => {
-                if (!dragging) return;
+                if (!dragging || !this.panel) return;
                 this.panel.style.left = `${e.clientX - startX}px`;
                 this.panel.style.top = `${e.clientY - startY}px`;
                 this.panel.style.right = 'auto';
@@ -660,7 +628,7 @@
     }
 
     // =============================================================
-    // 6. TARGET PAGE: QUÉT NÚT, TRÍCH XUẤT MÃ & LỌC TỪ KHÓA GIẢ
+    // 6. TARGET PAGE: QUÉT NÚT, TRÍCH XUẤT MÃ & RELOAD KHI KẸT 0
     // =============================================================
 
     class TargetPageHandler {
@@ -702,7 +670,7 @@
                 overlays.forEach(el => {
                     const style = window.getComputedStyle(el);
                     if ((style.position === 'fixed' || style.position === 'absolute') && parseInt(style.zIndex, 10) > 5000) {
-                        if (!el.querySelector('button, input, a') && el.id !== 'mrdon-engine-root') el.remove();
+                        if (!el.querySelector('button, input, a') && !el.id.startsWith('mrdon-')) el.remove();
                     }
                 });
             } catch (_) {}
@@ -734,21 +702,18 @@
                 /lấy\s*pass/i, /xem\s*mã/i, /click\s*để\s*lấy/i, /bấm\s*lấy\s*mã/i
             ];
 
-            // Chỉ quét các thẻ có tính tương tác thật, loại trừ tiêu đề và chữ hướng dẫn
             const elements = document.querySelectorAll('button, a, div[role="button"], input[type="button"], input[type="submit"]');
             for (const el of elements) {
+                if (el.closest('#mrdon-main-panel')) continue;
                 const rect = el.getBoundingClientRect();
                 if (rect.width <= 0 || rect.height <= 0) continue;
 
                 const text = (el.innerText || el.value || '').trim();
-                // Bỏ qua nếu là tiêu đề hướng dẫn
                 if (/hướng dẫn|cách lấy mã/i.test(text)) continue;
 
                 if (text && text.length < 35 && textKeywords.some(regex => regex.test(text))) {
                     const onclick = el.getAttribute('onclick') || '';
-                    if (!BANNER_KEYWORDS.some(k => onclick.toLowerCase().includes(k))) {
-                        return el;
-                    }
+                    if (!BANNER_KEYWORDS.some(k => onclick.toLowerCase().includes(k))) return el;
                 }
             }
 
@@ -779,13 +744,12 @@
             let runs = 0;
             const fastTimer = setInterval(() => {
                 runs++;
-                // Bỏ qua lọc chuỗi verify chung chung để tránh bắt nhầm Cloudflare
                 const targetLink = document.querySelector('a[href*="activate_link"], a[href*="type=verify"], a[href*="realkidkey.site/api"]');
                 if (targetLink) {
                     const realHref = targetLink.getAttribute('href') || targetLink.href;
                     if (realHref && realHref.startsWith('http')) {
                         clearInterval(fastTimer);
-                        gui?.log(`🚀 Chuyển hướng link đích: ${realHref}`, 'info');
+                        gui?.log(`🚀 Chuyển hướng link: ${realHref}`, 'info');
                         location.href = realHref;
                         return;
                     }
@@ -793,6 +757,7 @@
 
                 const links = document.querySelectorAll('a, button');
                 for (const el of links) {
+                    if (el.closest('#mrdon-main-panel')) continue;
                     const text = (el.innerText || el.textContent || '').trim();
                     if (/^lấy\s*link$/i.test(text) \vert{}\vert{} /^get\s*link$/i.test(text)) {
                         clearInterval(fastTimer);
@@ -818,7 +783,6 @@
                 if (!text) return false;
                 const clean = text.trim();
 
-                // Mã SEO Traffic KHÔNG BAO GIỜ chứa dấu cách
                 if (/\s/.test(clean)) return false;
                 if (clean.length < 4 || clean.length > 35) return false;
 
@@ -844,13 +808,13 @@
 
                     if (val === '0') {
                         if (!zeroErrorTimer) {
-                            gui?.log('⚠️ Kẹt đếm ngược "0". Chờ 1.5s xác nhận trước khi reload...', 'warn');
+                            gui?.log('⚠️ Kẹt đếm ngược "0". Chờ 1.5s xác nhận...', 'warn');
                             zeroErrorTimer = setTimeout(() => {
                                 const reCheckVal = (el.textContent || el.innerText || '').trim();
                                 if (reCheckVal === '0') {
                                     extracted = true;
-                                    gui?.log('🔄 Mã kẹt 0s! Đang tải lại trang...', 'err');
-                                    gui?.toast('🔄 Mã bị kẹt 0s, đang reload...', 'err');
+                                    gui?.log('🔄 Kẹt 0s, tải lại trang...', 'err');
+                                    gui?.toast('🔄 Mã bị kẹt 0s, reload...', 'err');
                                     location.reload();
                                 } else {
                                     zeroErrorTimer = null;
@@ -876,7 +840,7 @@
 
                         document.title = `✅ [MÃ: ${val}] - ${document.title}`;
 
-                        gui?.log('🚪 Đã lấy xong mã! Tự động tắt Tab...', 'info');
+                        gui?.log('🚪 Đã lấy mã xong! Chuẩn bị tắt tab...', 'info');
                         setTimeout(() => { try { window.close(); } catch (_) {} }, 1000);
                         break;
                     }
@@ -893,7 +857,7 @@
     }
 
     // =============================================================
-    // 7. TỰ ĐỘNG ĐIỀN MÃ XÁC NHẬN (ANTI-MISCLICK)
+    // 7. TỰ ĐỘNG ĐIỀN MÃ XÁC NHẬN VÀO TRANG GỐC
     // =============================================================
 
     function handleAutoFillAndSubmit(gui) {
@@ -911,7 +875,6 @@
                     return;
                 }
 
-                // Bộ chọn an toàn, tránh can thiệp nhầm vào các thanh tìm kiếm thông thường
                 const inputEl = document.querySelector(
                     'input[placeholder*="Nhập mã" i], input[placeholder*="xác nhận" i], input[placeholder*="nhập code" i], ' +
                     'input[id*="code" i], input[name*="code" i], input[id*="token" i], main#scroller input[type="text"]'
@@ -928,8 +891,9 @@
 
                 const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
                 const submitBtn = buttons.find(btn =>
-                    /nhập mã|gửi|submit|xác nhận/i.test(btn.textContent || btn.value || '') ||
-                    btn.querySelector('.tabler-icon-brand-telegram')
+                    !btn.closest('#mrdon-main-panel') &&
+                    (/nhập mã|gửi|submit|xác nhận/i.test(btn.textContent || btn.value || '') ||
+                    btn.querySelector('.tabler-icon-brand-telegram'))
                 );
 
                 if (submitBtn) {
@@ -940,7 +904,7 @@
                     submitBtn.disabled = false;
                     submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
 
-                    gui?.log('🚀 Tự động gửi mã xác thực...', 'info');
+                    gui?.log('🚀 Tự động gửi mã xác thực!', 'info');
                     gui?.toast('🚀 Đã gửi mã thành công!', 'info');
 
                     Storage.delete(CODE_STORAGE_KEY);
@@ -968,15 +932,15 @@
     }
 
     // =============================================================
-    // 8. ĐIỂM KHỞI CHẠY (ENTRY POINT)
+    // 8. KHỞI CHẠY (ENTRY POINT)
     // =============================================================
 
     function main() {
         const gui = new EngineGUI();
-        gui.init();
+        gui.render();
 
-        // Tự phục hồi GUI liên tục mỗi 500ms
-        setInterval(() => gui.mount(), 500);
+        // Tự động kiểm tra và vẽ lại bảng nếu trang web tải động
+        setInterval(() => gui.render(), 1000);
 
         window.addEventListener('keydown', (e) => {
             const isKeyG = e.code === 'KeyG' || (e.key && e.key.toLowerCase() === 'g');
