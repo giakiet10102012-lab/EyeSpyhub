@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google SEO Traffic & Smart Bypass Engine
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
-// @description  Tự động tìm kiếm Google, mở liên kết đích, bypass nút lấy mã SEO (Ontop, GTraffic, 1s...) và tự động điền mã xác nhận.
+// @version      1.0.2
+// @description  Tự động tìm kiếm Google, mở liên kết đích, bypass nút lấy mã SEO (Ontop, GTraffic, 1s...) và tự động điền mã xác nhận. (GUI Always On)
 // @author       MrDon & Assistant
 // @match        *://*.google.com/*
 // @match        *://*.google.com.vn/*
@@ -14,6 +14,7 @@
 // @grant        GM_deleteValue
 // @grant        GM_setClipboard
 // @grant        GM_addValueChangeListener
+// @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
 // @run-at       document-start
 // @noframes
@@ -27,7 +28,7 @@
     const IS_GOOGLE = /(^|\.)google\./i.test(location.hostname);
     const CODE_STORAGE_KEY = 'auto_bypass_code';
     const TASK_KEY = 'seo_task';
-    const TASK_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút
+    const TASK_TIMEOUT_MS = 10 * 60 * 1000;
 
     const CONFIG = {
         SEARCH_DEBOUNCE_MS: 180,
@@ -261,12 +262,13 @@
     }
 
     function showToast(message, type = 'info') {
+        if (!document.body) return;
         let box = document.getElementById('engine-toast-container');
         if (!box) {
             box = document.createElement('div');
             box.id = 'engine-toast-container';
             box.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-            (document.body || document.documentElement).appendChild(box);
+            document.body.appendChild(box);
         }
 
         const toast = document.createElement('div');
@@ -303,7 +305,7 @@
     function executeClickSequence(element, gui) {
         if (!element || !element.isConnected) return;
 
-        gui?.log('🎯 Xác định nút hành động. Đang loại bỏ khóa và kích hoạt...', 'info');
+        gui?.log('🎯 Tìm thấy nút bấm. Đang mở khóa và kích hoạt...', 'info');
 
         try {
             element.removeAttribute('disabled');
@@ -326,7 +328,6 @@
 
             const uniqueChain = [...new Set(targetChain)];
 
-            // Thực thi thuộc tính onclick hoặc liên kết javascript nếu có
             uniqueChain.forEach(node => {
                 const onclickAttr = node.getAttribute('onclick');
                 if (onclickAttr) {
@@ -337,7 +338,6 @@
                 }
             });
 
-            // Gửi chuỗi sự kiện click hoàn chỉnh
             const eventPayload = {
                 bubbles: true,
                 cancelable: true,
@@ -358,38 +358,68 @@
             }
 
             clearTask();
-            gui?.log('✅ Đã kích hoạt sự kiện nhấn thành công!', 'info');
+            gui?.log('✅ Đã kích hoạt nhấn thành công!', 'info');
             showToast('🎯 Đã bấm nút nhận mã thành công!', 'info');
         }, 400);
     }
 
     // =============================================================
-    // 2. GIAO DIỆN ĐIỀU KHIỂN (GUI)
+    // 2. GIAO DIỆN ĐIỀU KHIỂN (GUI - MẶC ĐỊNH LUÔN BẬT)
     // =============================================================
 
     class ControlPanel {
         constructor() {
             this.container = null;
+            this.floatingBtn = null;
             this.logOutput = null;
             this.keywordInput = null;
             this.domainInput = null;
         }
 
         init(readyCallback) {
-            if (document.getElementById('engine-control-panel')) {
-                readyCallback?.();
-                return;
-            }
-
             const checkDOM = () => {
-                if (!document.body && !document.documentElement) return;
+                if (!document.body) return;
                 clearInterval(checkTimer);
-                this.buildInterface();
+
+                if (!document.getElementById('engine-control-panel')) {
+                    this.buildInterface();
+                    this.buildFloatingButton();
+                }
                 readyCallback?.();
             };
 
             const checkTimer = setInterval(checkDOM, 40);
-            checkDOM();
+            if (document.body) checkDOM();
+        }
+
+        buildFloatingButton() {
+            if (document.getElementById('engine-quick-toggle-btn')) return;
+
+            this.floatingBtn = document.createElement('div');
+            this.floatingBtn.id = 'engine-quick-toggle-btn';
+            this.floatingBtn.title = 'Bấm để Mở/Ẩn SEO Tool (Alt+Shift+G)';
+            this.floatingBtn.innerHTML = '⚡';
+            this.floatingBtn.style.cssText = `
+                position: fixed; bottom: 20px; left: 20px; width: 42px; height: 42px;
+                background: #89b4fa; color: #11111b; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 20px; font-weight: bold; cursor: pointer;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 2147483646;
+                transition: transform 0.2s, background 0.2s; user-select: none;
+            `;
+
+            this.floatingBtn.addEventListener('mouseenter', () => {
+                this.floatingBtn.style.transform = 'scale(1.1)';
+            });
+            this.floatingBtn.addEventListener('mouseleave', () => {
+                this.floatingBtn.style.transform = 'scale(1)';
+            });
+            this.floatingBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggle();
+            });
+
+            document.body.appendChild(this.floatingBtn);
         }
 
         buildInterface() {
@@ -397,12 +427,13 @@
 
             this.container = document.createElement('div');
             this.container.id = 'engine-control-panel';
+            // display: block -> BẢNG ĐIỀU KHIỂN MẶC ĐỊNH LUÔN HIỂN THỊ
             this.container.style.cssText = `
                 position: fixed; top: 20px; right: 20px; width: 330px;
                 background: #181825; color: #cdd6f4; border: 2px solid #89b4fa;
                 border-radius: 12px; padding: 14px; font-family: system-ui, -apple-system, sans-serif;
-                font-size: 12px; z-index: 2147483646; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-                user-select: none; display: none; box-sizing: border-box;
+                font-size: 12px; z-index: 2147483647; box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+                user-select: none; display: block; box-sizing: border-box;
             `;
 
             const header = document.createElement('div');
@@ -410,13 +441,15 @@
 
             const title = document.createElement('span');
             title.style.cssText = 'font-weight: 700; color: #89b4fa; font-size: 13px;';
-            title.textContent = '⚡ SEO Traffic Engine v1.0.0';
+            title.textContent = '⚡ SEO Bypass Engine v1.0.2';
 
-            const hotkeyBadge = document.createElement('span');
-            hotkeyBadge.style.cssText = 'font-size: 10px; color: #11111b; background: #a6e3a1; padding: 2px 6px; border-radius: 4px; font-weight: 600;';
-            hotkeyBadge.textContent = 'Alt + Shift + G';
+            const closeBtn = document.createElement('span');
+            closeBtn.style.cssText = 'cursor: pointer; color: #f38ba8; font-weight: bold; padding: 2px 6px; font-size: 14px;';
+            closeBtn.textContent = '✖';
+            closeBtn.title = 'Ẩn bảng điều khiển';
+            closeBtn.addEventListener('click', () => this.toggle());
 
-            header.append(title, hotkeyBadge);
+            header.append(title, closeBtn);
             this.container.appendChild(header);
 
             this.keywordInput = this.createStyledInput('Từ khóa tìm kiếm Google...');
@@ -443,7 +476,7 @@
             this.logOutput.style.cssText = 'background: #11111b; border: 1px solid #313244; height: 110px; padding: 8px; overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-family: monospace; font-size: 11px;';
             this.container.appendChild(this.logOutput);
 
-            (document.body || document.documentElement).appendChild(this.container);
+            document.body.appendChild(this.container);
 
             this.bindDrag(header);
 
@@ -451,7 +484,7 @@
             if (activeTask) {
                 this.keywordInput.value = activeTask.keyword || '';
                 this.domainInput.value = activeTask.domain || '';
-                this.log(`🔄 Khôi phục phiên làm việc: [${activeTask.domain}]`, 'info');
+                this.log(`🔄 Khôi phục task: [${activeTask.domain}]`, 'info');
             }
 
             runBtn.addEventListener('click', () => {
@@ -480,8 +513,8 @@
                 clearTask();
                 this.keywordInput.value = '';
                 this.domainInput.value = '';
-                this.log('🧹 Đã dọn dẹp task lưu trữ.', 'warn');
-                showToast('🧹 Đã xóa task hiện tại.', 'warn');
+                this.log('🧹 Đã xóa task lưu trữ.', 'warn');
+                showToast('🧹 Đã dọn dẹp task.', 'warn');
             });
         }
 
@@ -533,10 +566,11 @@
 
         toggle() {
             if (!this.container) {
-                this.init();
+                this.init(() => this.toggle());
                 return;
             }
-            this.container.style.display = this.container.style.display === 'none' ? 'block' : 'none';
+            const isHidden = this.container.style.display === 'none';
+            this.container.style.display = isHidden ? 'block' : 'none';
         }
     }
 
@@ -587,13 +621,14 @@
                 debounceTimer = setTimeout(evaluateResults, CONFIG.SEARCH_DEBOUNCE_MS);
             };
 
-            const targetContainer = document.querySelector('#rso, #search, #center_col') || document.body || document.documentElement;
-            observer = new MutationObserver(debouncedScan);
-            observer.observe(targetContainer, { childList: true, subtree: true });
+            const targetContainer = document.querySelector('#rso, #search, #center_col') || document.body;
+            if (targetContainer) {
+                observer = new MutationObserver(debouncedScan);
+                observer.observe(targetContainer, { childList: true, subtree: true });
+            }
 
             evaluateResults();
 
-            // Nếu quá thời gian chờ mà chưa thấy ở trang 1 -> Chuyển trang kết quả tiếp theo
             timeoutWatch = setTimeout(() => {
                 if (isFound) return;
                 stopSearching();
@@ -648,9 +683,9 @@
                     window.scrollBy({ top: 320 * scrollDirection, behavior: 'smooth' });
                 }
 
-                if (attempts > 80) { // Dừng quét sau ~20 giây nếu không thấy
+                if (attempts > 80) {
                     clearInterval(pollInterval);
-                    gui?.log('⚠️ Đã hết thời gian tìm kiếm tự động nút bấm.', 'warn');
+                    gui?.log('⚠️ Hết thời gian tìm kiếm tự động nút bấm.', 'warn');
                 }
             }, CONFIG.TARGET_POLL_INTERVAL_MS);
         }
@@ -669,7 +704,6 @@
         }
 
         static detectTrafficButton() {
-            // 1. Quét theo các ID và Selector nút bấm chuyên dụng
             const prioritySelectors = [
                 '#trade-d-btn', '#trade-d-btn__content', '#trade-d-btn__arrow',
                 '#avt-btn', 'svg#avt-btn', '[id="avt-btn"]',
@@ -686,7 +720,6 @@
                 }
             }
 
-            // 2. Quét thẻ hình ảnh chứa thuộc tính nhận diện nút bấm
             const imgSelectors = [
                 'img[src*="layma"]', 'img[src*="traffic"]', 'img[src*="getcode"]',
                 'img[src*="button"]', 'img[alt*="mã" i]', 'img[alt*="code" i]'
@@ -699,7 +732,6 @@
                 }
             }
 
-            // 3. Quét theo văn bản nội dung của nút
             const textKeywords = [/lấy\s*mã/i, /get\s*code/i, /mã\s*xác\s*nhận/i, /lấy\s*pass/i, /bấm\s*lấy\s*mã/i];
             const candidateElements = document.querySelectorAll('button, a, div[role="button"]');
 
@@ -764,7 +796,7 @@
 
                 if (/^\d+$/.test(text)) {
                     const num = parseInt(text, 10);
-                    if (num <= 180) return false; // Tránh nhầm với số giây đếm ngược
+                    if (num <= 180) return false;
                 }
 
                 if (/^(code|get code|mã code|pass|loading|wait|chờ|giây|seconds)$/i.test(text)) return false;
@@ -784,7 +816,7 @@
 
                     if (val === '0') {
                         if (!zeroStallTimer) {
-                            gui?.log('⚠️ Phát hiện đếm ngược kẹt tại "0". Đang kiểm tra để reload...', 'warn');
+                            gui?.log('⚠️ Phát hiện đếm ngược kẹt tại "0". Đang kiểm tra reload...', 'warn');
                             zeroStallTimer = setTimeout(() => {
                                 const reCheck = (node.textContent || node.innerText || '').trim();
                                 if (reCheck === '0') {
@@ -832,16 +864,23 @@
                 if (isExtracted) observer.disconnect();
             });
 
-            observer.observe(document.body || document.documentElement, {
-                childList: true, subtree: true, characterData: true
-            });
-
-            extractCodeFromDOM();
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+                extractCodeFromDOM();
+            } else {
+                const waitBody = setInterval(() => {
+                    if (document.body) {
+                        clearInterval(waitBody);
+                        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+                        extractCodeFromDOM();
+                    }
+                }, 50);
+            }
         }
     }
 
     // =============================================================
-    // 5. TỰ ĐỘNG NHẬP MÃ XÁC NHẬN VÀ GỬI (CHÍNH XÁC CAO)
+    // 5. TỰ ĐỘNG NHẬP MÃ XÁC NHẬN VÀ GỬI
     // =============================================================
 
     function setupAutoFillListener(gui) {
@@ -859,7 +898,6 @@
                     return;
                 }
 
-                // Bộ chọn có chủ đích cho các form nhập mã xác nhận SEO Traffic
                 const inputElement = document.querySelector(
                     'input[placeholder*="Nhập mã" i], input[placeholder*="xác nhận" i], input[placeholder*="code" i], ' +
                     'input[id*="code" i], input[name*="code" i], input[id*="token" i], main#scroller input[type="text"]'
@@ -920,18 +958,26 @@
     function initEngine() {
         const gui = new ControlPanel();
 
-        gui.init(() => {
-            window.addEventListener('keydown', e => {
-                if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'g') {
-                    e.preventDefault();
-                    gui.toggle();
-                }
-            });
+        // 1. Phím tắt Alt+Shift+G vẫn dùng được nếu bạn muốn ẩn/hiện tạm thời
+        window.addEventListener('keydown', (e) => {
+            const isKeyG = e.code === 'KeyG' || (e.key && e.key.toLowerCase() === 'g');
+            if (e.altKey && e.shiftKey && isKeyG) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                gui.toggle();
+            }
+        }, true);
 
-            // Lắng nghe và nạp mã xác nhận nếu có mã được gửi tới
+        // 2. Menu extension Tampermonkey
+        if (typeof GM_registerMenuCommand === 'function') {
+            GM_registerMenuCommand('⚡ Ẩn / Hiện Bảng Điều Khiển (Alt+Shift+G)', () => {
+                gui.toggle();
+            });
+        }
+
+        gui.init(() => {
             setupAutoFillListener(gui);
 
-            // Các trang ngoài Google sẽ hỗ trợ bypass và trích xuất mã
             if (!IS_GOOGLE) {
                 TargetPageHandler.monitorCodeExtraction(gui);
                 TargetPageHandler.handleIntermediateBypass(gui);
