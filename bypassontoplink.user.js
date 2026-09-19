@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Google SEO Traffic & Smart Bypass Engine
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
-// @description  Tự động tìm kiếm Google, mở liên kết đích, bypass nút lấy mã SEO (Ontop, GTraffic, 1s...) và tự động điền mã xác nhận. (GUI Always On)
+// @version      1.0.3
+// @description  Tự động tìm kiếm Google, mở liên kết đích, bypass nút lấy mã SEO (Ontop, GTraffic, 1s...) và tự động điền mã xác nhận.
 // @author       MrDon & Assistant
-// @match        *://*.google.com/*
-// @match        *://*.google.com.vn/*
-// @match        *://google.com/*
-// @match        *://google.com.vn/*
 // @match        *://*/*
+// @match        https://*/*
+// @match        http://*/*
+// @include      *
+// @include      http*://*/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
@@ -16,7 +16,7 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
-// @run-at       document-start
+// @run-at       document-end
 // @noframes
 // ==/UserScript==
 
@@ -262,13 +262,14 @@
     }
 
     function showToast(message, type = 'info') {
-        if (!document.body) return;
+        const targetBody = document.body || document.documentElement;
+        if (!targetBody) return;
         let box = document.getElementById('engine-toast-container');
         if (!box) {
             box = document.createElement('div');
             box.id = 'engine-toast-container';
-            box.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-            document.body.appendChild(box);
+            box.style.cssText = 'position:fixed !important;bottom:24px !important;right:24px !important;z-index:2147483647 !important;display:flex !important;flex-direction:column !important;gap:8px !important;pointer-events:none !important;';
+            targetBody.appendChild(box);
         }
 
         const toast = document.createElement('div');
@@ -280,12 +281,12 @@
         const currentStyle = palette[type] || palette.info;
 
         toast.style.cssText = `
-            background: ${currentStyle.bg}; color: ${currentStyle.text};
-            border: 1px solid ${currentStyle.border}; padding: 10px 16px;
-            border-radius: 8px; font-family: system-ui, -apple-system, sans-serif;
-            font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            background: ${currentStyle.bg} !important; color: ${currentStyle.text} !important;
+            border: 1px solid ${currentStyle.border} !important; padding: 10px 16px !important;
+            border-radius: 8px !important; font-family: system-ui, -apple-system, sans-serif !important;
+            font-size: 13px !important; font-weight: 600 !important; box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
             opacity: 0; transform: translateY(12px); transition: all 0.25s ease-out;
-            pointer-events: auto;
+            pointer-events: auto !important;
         `;
         toast.textContent = message;
         box.appendChild(toast);
@@ -364,7 +365,7 @@
     }
 
     // =============================================================
-    // 2. GIAO DIỆN ĐIỀU KHIỂN (GUI - MẶC ĐỊNH LUÔN BẬT)
+    // 2. GIAO DIỆN ĐIỀU KHIỂN (CƠ CHẾ TỰ PHỤC HỒI / SELF-HEALING)
     // =============================================================
 
     class ControlPanel {
@@ -376,22 +377,6 @@
             this.domainInput = null;
         }
 
-        init(readyCallback) {
-            const checkDOM = () => {
-                if (!document.body) return;
-                clearInterval(checkTimer);
-
-                if (!document.getElementById('engine-control-panel')) {
-                    this.buildInterface();
-                    this.buildFloatingButton();
-                }
-                readyCallback?.();
-            };
-
-            const checkTimer = setInterval(checkDOM, 40);
-            if (document.body) checkDOM();
-        }
-
         buildFloatingButton() {
             if (document.getElementById('engine-quick-toggle-btn')) return;
 
@@ -400,12 +385,13 @@
             this.floatingBtn.title = 'Bấm để Mở/Ẩn SEO Tool (Alt+Shift+G)';
             this.floatingBtn.innerHTML = '⚡';
             this.floatingBtn.style.cssText = `
-                position: fixed; bottom: 20px; left: 20px; width: 42px; height: 42px;
-                background: #89b4fa; color: #11111b; border-radius: 50%;
-                display: flex; align-items: center; justify-content: center;
-                font-size: 20px; font-weight: bold; cursor: pointer;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 2147483646;
-                transition: transform 0.2s, background 0.2s; user-select: none;
+                position: fixed !important; bottom: 20px !important; left: 20px !important;
+                width: 44px !important; height: 44px !important; background: #89b4fa !important;
+                color: #11111b !important; border-radius: 50% !important;
+                display: flex !important; align-items: center !important; justify-content: center !important;
+                font-size: 22px !important; font-weight: bold !important; cursor: pointer !important;
+                box-shadow: 0 4px 14px rgba(0,0,0,0.5) !important; z-index: 2147483646 !important;
+                transition: transform 0.2s, background 0.2s !important; user-select: none !important;
             `;
 
             this.floatingBtn.addEventListener('mouseenter', () => {
@@ -419,7 +405,7 @@
                 this.toggle();
             });
 
-            document.body.appendChild(this.floatingBtn);
+            (document.body || document.documentElement).appendChild(this.floatingBtn);
         }
 
         buildInterface() {
@@ -427,24 +413,23 @@
 
             this.container = document.createElement('div');
             this.container.id = 'engine-control-panel';
-            // display: block -> BẢNG ĐIỀU KHIỂN MẶC ĐỊNH LUÔN HIỂN THỊ
             this.container.style.cssText = `
-                position: fixed; top: 20px; right: 20px; width: 330px;
-                background: #181825; color: #cdd6f4; border: 2px solid #89b4fa;
-                border-radius: 12px; padding: 14px; font-family: system-ui, -apple-system, sans-serif;
-                font-size: 12px; z-index: 2147483647; box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-                user-select: none; display: block; box-sizing: border-box;
+                position: fixed !important; top: 20px !important; right: 20px !important; width: 330px !important;
+                background: #181825 !important; color: #cdd6f4 !important; border: 2px solid #89b4fa !important;
+                border-radius: 12px !important; padding: 14px !important; font-family: system-ui, -apple-system, sans-serif !important;
+                font-size: 12px !important; z-index: 2147483647 !important; box-shadow: 0 10px 30px rgba(0,0,0,0.7) !important;
+                user-select: none !important; display: block !important; box-sizing: border-box !important;
             `;
 
             const header = document.createElement('div');
-            header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: move;';
+            header.style.cssText = 'display: flex !important; justify-content: space-between !important; align-items: center !important; margin-bottom: 10px !important; cursor: move !important;';
 
             const title = document.createElement('span');
-            title.style.cssText = 'font-weight: 700; color: #89b4fa; font-size: 13px;';
-            title.textContent = '⚡ SEO Bypass Engine v1.0.2';
+            title.style.cssText = 'font-weight: 700 !important; color: #89b4fa !important; font-size: 13px !important;';
+            title.textContent = '⚡ SEO Bypass Engine v1.0.3';
 
             const closeBtn = document.createElement('span');
-            closeBtn.style.cssText = 'cursor: pointer; color: #f38ba8; font-weight: bold; padding: 2px 6px; font-size: 14px;';
+            closeBtn.style.cssText = 'cursor: pointer !important; color: #f38ba8 !important; font-weight: bold !important; padding: 2px 6px !important; font-size: 14px !important;';
             closeBtn.textContent = '✖';
             closeBtn.title = 'Ẩn bảng điều khiển';
             closeBtn.addEventListener('click', () => this.toggle());
@@ -459,24 +444,24 @@
             this.container.appendChild(this.domainInput);
 
             const btnWrapper = document.createElement('div');
-            btnWrapper.style.cssText = 'display: flex; gap: 8px; margin-bottom: 10px;';
+            btnWrapper.style.cssText = 'display: flex !important; gap: 8px !important; margin-bottom: 10px !important;';
 
             const runBtn = document.createElement('button');
             runBtn.textContent = '▶ Bắt Đầu';
-            runBtn.style.cssText = 'flex: 1; background: #89b4fa; color: #11111b; border: none; padding: 8px; font-weight: 700; border-radius: 6px; cursor: pointer;';
+            runBtn.style.cssText = 'flex: 1 !important; background: #89b4fa !important; color: #11111b !important; border: none !important; padding: 8px !important; font-weight: 700 !important; border-radius: 6px !important; cursor: pointer !important;';
 
             const clearBtn = document.createElement('button');
             clearBtn.textContent = '🧹 Xóa Task';
-            clearBtn.style.cssText = 'flex: 1; background: #f38ba8; color: #11111b; border: none; padding: 8px; font-weight: 700; border-radius: 6px; cursor: pointer;';
+            clearBtn.style.cssText = 'flex: 1 !important; background: #f38ba8 !important; color: #11111b !important; border: none !important; padding: 8px !important; font-weight: 700 !important; border-radius: 6px !important; cursor: pointer !important;';
 
             btnWrapper.append(runBtn, clearBtn);
             this.container.appendChild(btnWrapper);
 
             this.logOutput = document.createElement('div');
-            this.logOutput.style.cssText = 'background: #11111b; border: 1px solid #313244; height: 110px; padding: 8px; overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-family: monospace; font-size: 11px;';
+            this.logOutput.style.cssText = 'background: #11111b !important; border: 1px solid #313244 !important; height: 110px !important; padding: 8px !important; overflow-y: auto !important; color: #a6e3a1 !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important;';
             this.container.appendChild(this.logOutput);
 
-            document.body.appendChild(this.container);
+            (document.body || document.documentElement).appendChild(this.container);
 
             this.bindDrag(header);
 
@@ -504,7 +489,7 @@
                     page: 1
                 });
 
-                this.log(`🚀 Mở tab tìm kiếm Google: ${keyword}`, 'info');
+                this.log(`🚀 Mở Google tìm: ${keyword}`, 'info');
                 showToast(`🔎 Đang tìm kiếm trên Google...`);
                 window.open(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, '_blank');
             });
@@ -522,7 +507,7 @@
             const input = document.createElement('input');
             input.type = 'text';
             input.placeholder = placeholderText;
-            input.style.cssText = 'width: 100%; box-sizing: border-box; background: #313244; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; outline: none; font-size: 12px;';
+            input.style.cssText = 'width: 100% !important; box-sizing: border-box !important; background: #313244 !important; border: 1px solid #45475a !important; color: #cdd6f4 !important; padding: 8px 10px !important; border-radius: 6px !important; margin-bottom: 8px !important; outline: none !important; font-size: 12px !important;';
             return input;
         }
 
@@ -566,11 +551,21 @@
 
         toggle() {
             if (!this.container) {
-                this.init(() => this.toggle());
+                this.buildInterface();
                 return;
             }
             const isHidden = this.container.style.display === 'none';
             this.container.style.display = isHidden ? 'block' : 'none';
+        }
+
+        ensureMounted() {
+            if (!document.body && !document.documentElement) return;
+            if (!document.getElementById('engine-control-panel')) {
+                this.buildInterface();
+            }
+            if (!document.getElementById('engine-quick-toggle-btn')) {
+                this.buildFloatingButton();
+            }
         }
     }
 
@@ -580,7 +575,7 @@
 
     class GoogleNavigator {
         static run(task, gui) {
-            gui?.log(`🔍 Bắt đầu quét liên kết đích: "${task.domain}"...`, 'info');
+            gui?.log(`🔍 Quét liên kết: "${task.domain}"...`, 'info');
 
             let isFound = false;
             let observer = null;
@@ -644,7 +639,7 @@
                 task.step = 'SEARCHING';
                 saveTask(task);
 
-                gui?.log(`➡️ Đang chuyển sang trang Google ${task.page}...`, 'info');
+                gui?.log(`➡️ Chuyển sang trang Google ${task.page}...`, 'info');
                 nextBtn.click();
             }, CONFIG.SEARCH_MAX_PAGE_WAIT_MS);
         }
@@ -759,7 +754,7 @@
                     const realHref = verifyLink.getAttribute('href') || verifyLink.href;
                     if (realHref && realHref.startsWith('http')) {
                         clearInterval(checkTimer);
-                        gui?.log(`🚀 Tự động chuyển hướng link xác minh: ${realHref}`, 'info');
+                        gui?.log(`🚀 Chuyển hướng link: ${realHref}`, 'info');
                         location.href = realHref;
                         return;
                     }
@@ -816,7 +811,7 @@
 
                     if (val === '0') {
                         if (!zeroStallTimer) {
-                            gui?.log('⚠️ Phát hiện đếm ngược kẹt tại "0". Đang kiểm tra reload...', 'warn');
+                            gui?.log('⚠️ Đếm ngược kẹt "0". Kiểm tra reload...', 'warn');
                             zeroStallTimer = setTimeout(() => {
                                 const reCheck = (node.textContent || node.innerText || '').trim();
                                 if (reCheck === '0') {
@@ -864,17 +859,10 @@
                 if (isExtracted) observer.disconnect();
             });
 
-            if (document.body) {
-                observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+            const targetRoot = document.body || document.documentElement;
+            if (targetRoot) {
+                observer.observe(targetRoot, { childList: true, subtree: true, characterData: true });
                 extractCodeFromDOM();
-            } else {
-                const waitBody = setInterval(() => {
-                    if (document.body) {
-                        clearInterval(waitBody);
-                        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-                        extractCodeFromDOM();
-                    }
-                }, 50);
             }
         }
     }
@@ -958,7 +946,7 @@
     function initEngine() {
         const gui = new ControlPanel();
 
-        // 1. Phím tắt Alt+Shift+G vẫn dùng được nếu bạn muốn ẩn/hiện tạm thời
+        // 1. Phím tắt Alt+Shift+G
         window.addEventListener('keydown', (e) => {
             const isKeyG = e.code === 'KeyG' || (e.key && e.key.toLowerCase() === 'g');
             if (e.altKey && e.shiftKey && isKeyG) {
@@ -968,35 +956,43 @@
             }
         }, true);
 
-        // 2. Menu extension Tampermonkey
+        // 2. Menu Extension
         if (typeof GM_registerMenuCommand === 'function') {
             GM_registerMenuCommand('⚡ Ẩn / Hiện Bảng Điều Khiển (Alt+Shift+G)', () => {
                 gui.toggle();
             });
         }
 
-        gui.init(() => {
-            setupAutoFillListener(gui);
+        // 3. Khởi tạo & Cơ chế Self-Healing (duy trì sự tồn tại của GUI trước các khung SPA)
+        gui.ensureMounted();
+        setInterval(() => {
+            gui.ensureMounted();
+        }, 1000);
 
-            if (!IS_GOOGLE) {
-                TargetPageHandler.monitorCodeExtraction(gui);
-                TargetPageHandler.handleIntermediateBypass(gui);
-            }
+        setupAutoFillListener(gui);
 
-            const currentTask = getActiveTask();
-            if (!currentTask?.domain) return;
+        if (!IS_GOOGLE) {
+            TargetPageHandler.monitorCodeExtraction(gui);
+            TargetPageHandler.handleIntermediateBypass(gui);
+        }
 
-            if (IS_GOOGLE && currentTask.step === 'SEARCHING') {
-                GoogleNavigator.run(currentTask, gui);
-                return;
-            }
+        const currentTask = getActiveTask();
+        if (!currentTask?.domain) return;
 
-            if (!IS_GOOGLE && currentTask.step === 'BYPASSING') {
-                TargetPageHandler.run(currentTask, gui);
-            }
-        });
+        if (IS_GOOGLE && currentTask.step === 'SEARCHING') {
+            GoogleNavigator.run(currentTask, gui);
+            return;
+        }
+
+        if (!IS_GOOGLE && currentTask.step === 'BYPASSING') {
+            TargetPageHandler.run(currentTask, gui);
+        }
     }
 
-    initEngine();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEngine);
+    } else {
+        initEngine();
+    }
 
 })();
