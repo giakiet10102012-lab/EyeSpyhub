@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google SEO Traffic & Smart Bypass Engine
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.0.0
 // @description  Bypass SEO Google cao cấp: Tìm kiếm tự động, phân tích URL đa tầng, lật trang, chống kẹt số 0 & tự điền mã.
 // @author       MrDon & Assistant
 // @match        *://*/*
@@ -13,6 +13,7 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
+// @grant        window.close
 // @run-at       document-end
 // @noframes
 // ==/UserScript==
@@ -370,7 +371,7 @@
     }
 
     // =============================================================
-    // 4. BẢNG ĐIỀU KHIỂN DOM TRỰC TIẾP (CHUẨN DIAGNOSTIC)
+    // 4. BẢNG ĐIỀU KHIỂN DOM TRỰC TIẾP (CHUẨN BẢO MẬT & TRUSTED TYPES SAFE)
     // =============================================================
 
     class EngineGUI {
@@ -417,7 +418,7 @@
                 root.appendChild(this.floatingBtn);
             }
 
-            // 3. Bảng điều khiển chính
+            // 3. Bảng điều khiển chính (Tạo DOM thuần để vượt Trusted Types)
             if (!document.getElementById('mrdon-main-panel')) {
                 this.panel = document.createElement('div');
                 this.panel.id = 'mrdon-main-panel';
@@ -430,29 +431,72 @@
                     pointer-events: auto !important; box-sizing: border-box !important;
                 `;
 
-                this.panel.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:move;" id="mrdon-panel-header">
-                        <span style="font-weight:700;color:#89b4fa;font-size:13px;">⚡ SEO Bypass Engine v1.1.2</span>
-                        <span style="cursor:pointer;color:#f38ba8;font-weight:bold;font-size:14px;padding:2px 6px;" id="mrdon-panel-close" title="Ẩn (Alt+Shift+G)">✖</span>
-                    </div>
-                    <input type="text" id="mrdon-input-kw" placeholder="Từ khóa Google..." style="width:100%;box-sizing:border-box;background:#313244;border:1px solid #45475a;color:#cdd6f4;padding:8px 10px;border-radius:6px;margin-bottom:8px;outline:none;font-size:12px;">
-                    <input type="text" id="mrdon-input-dom" placeholder="Domain đích / link gần đúng..." style="width:100%;box-sizing:border-box;background:#313244;border:1px solid #45475a;color:#cdd6f4;padding:8px 10px;border-radius:6px;margin-bottom:8px;outline:none;font-size:12px;">
-                    <div style="display:flex;gap:8px;margin-bottom:10px;">
-                        <button id="mrdon-btn-start" style="flex:1;background:#89b4fa;color:#11111b;border:none;padding:8px;font-weight:700;border-radius:6px;cursor:pointer;font-size:12px;">▶ Bắt Đầu</button>
-                        <button id="mrdon-btn-clear" style="flex:1;background:#f38ba8;color:#11111b;border:none;padding:8px;font-weight:700;border-radius:6px;cursor:pointer;font-size:12px;">🧹 Xóa Task</button>
-                    </div>
-                    <div id="mrdon-log-box" style="background:#11111b;border:1px solid #313244;height:110px;padding:8px;overflow-y:auto;color:#a6e3a1;border-radius:6px;font-family:monospace;font-size:11px;"></div>
-                `;
+                // Header
+                const header = document.createElement('div');
+                header.id = 'mrdon-panel-header';
+                header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:move;';
+
+                const title = document.createElement('span');
+                title.style.cssText = 'font-weight:700;color:#89b4fa;font-size:13px;';
+                title.textContent = '⚡ SEO Bypass Engine v1.1.3';
+
+                const closeBtn = document.createElement('span');
+                closeBtn.id = 'mrdon-panel-close';
+                closeBtn.title = 'Ẩn (Alt+Shift+G)';
+                closeBtn.style.cssText = 'cursor:pointer;color:#f38ba8;font-weight:bold;font-size:14px;padding:2px 6px;';
+                closeBtn.textContent = '✖';
+                closeBtn.onclick = () => this.toggle();
+
+                header.appendChild(title);
+                header.appendChild(closeBtn);
+
+                // Input Keyword
+                this.keywordInput = document.createElement('input');
+                this.keywordInput.type = 'text';
+                this.keywordInput.id = 'mrdon-input-kw';
+                this.keywordInput.placeholder = 'Từ khóa Google...';
+                this.keywordInput.style.cssText = 'width:100%;box-sizing:border-box;background:#313244;border:1px solid #45475a;color:#cdd6f4;padding:8px 10px;border-radius:6px;margin-bottom:8px;outline:none;font-size:12px;';
+
+                // Input Domain
+                this.domainInput = document.createElement('input');
+                this.domainInput.type = 'text';
+                this.domainInput.id = 'mrdon-input-dom';
+                this.domainInput.placeholder = 'Domain đích / link gần đúng...';
+                this.domainInput.style.cssText = 'width:100%;box-sizing:border-box;background:#313244;border:1px solid #45475a;color:#cdd6f4;padding:8px 10px;border-radius:6px;margin-bottom:8px;outline:none;font-size:12px;';
+
+                // Button Group
+                const btnGroup = document.createElement('div');
+                btnGroup.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
+
+                const btnStart = document.createElement('button');
+                btnStart.id = 'mrdon-btn-start';
+                btnStart.style.cssText = 'flex:1;background:#89b4fa;color:#11111b;border:none;padding:8px;font-weight:700;border-radius:6px;cursor:pointer;font-size:12px;';
+                btnStart.textContent = '▶ Bắt Đầu';
+
+                const btnClear = document.createElement('button');
+                btnClear.id = 'mrdon-btn-clear';
+                btnClear.style.cssText = 'flex:1;background:#f38ba8;color:#11111b;border:none;padding:8px;font-weight:700;border-radius:6px;cursor:pointer;font-size:12px;';
+                btnClear.textContent = '🧹 Xóa Task';
+
+                btnGroup.appendChild(btnStart);
+                btnGroup.appendChild(btnClear);
+
+                // Log Box
+                this.logOutput = document.createElement('div');
+                this.logOutput.id = 'mrdon-log-box';
+                this.logOutput.style.cssText = 'background:#11111b;border:1px solid #313244;height:110px;padding:8px;overflow-y:auto;color:#a6e3a1;border-radius:6px;font-family:monospace;font-size:11px;';
+
+                // Gắn các phần tử vào Panel
+                this.panel.appendChild(header);
+                this.panel.appendChild(this.keywordInput);
+                this.panel.appendChild(this.domainInput);
+                this.panel.appendChild(btnGroup);
+                this.panel.appendChild(this.logOutput);
 
                 root.appendChild(this.panel);
 
-                this.keywordInput = this.panel.querySelector('#mrdon-input-kw');
-                this.domainInput = this.panel.querySelector('#mrdon-input-dom');
-                this.logOutput = this.panel.querySelector('#mrdon-log-box');
-
-                this.panel.querySelector('#mrdon-panel-close').onclick = () => this.toggle();
-
-                this.panel.querySelector('#mrdon-btn-start').onclick = () => {
+                // Sự kiện nút Bắt đầu
+                btnStart.onclick = () => {
                     const keyword = this.keywordInput.value.trim();
                     const domain = this.domainInput.value.trim();
 
@@ -474,7 +518,8 @@
                     window.open(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, '_blank');
                 };
 
-                this.panel.querySelector('#mrdon-btn-clear').onclick = () => {
+                // Sự kiện nút Xóa task
+                btnClear.onclick = () => {
                     clearTask();
                     this.keywordInput.value = '';
                     this.domainInput.value = '';
@@ -482,7 +527,7 @@
                     this.toast('🧹 Đã xóa task!', 'warn');
                 };
 
-                this.bindDrag(this.panel.querySelector('#mrdon-panel-header'));
+                this.bindDrag(header);
 
                 const task = getActiveTask();
                 if (task) {
@@ -759,7 +804,9 @@
                 for (const el of links) {
                     if (el.closest('#mrdon-main-panel')) continue;
                     const text = (el.innerText || el.textContent || '').trim();
-                    if (/^lấy\s*link$/i.test(text) \vert{}\vert{} /^get\s*link$/i.test(text)) {
+
+                    // SỬA TẠI ĐÂY: Dùng toán tử || hợp lệ
+                   if (/^lấy\s*link$/i.test(text) || /^get\s*link$/i.test(text)) {
                         clearInterval(fastTimer);
                         gui?.log('⚡ Tìm thấy nút "Lấy link", bấm ngay...', 'info');
                         el.removeAttribute('disabled');
