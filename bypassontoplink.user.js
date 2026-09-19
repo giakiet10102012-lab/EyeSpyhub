@@ -1,17 +1,14 @@
 // ==UserScript==
-// @name         Google SEO Traffic & Smart Bypass Engine v7.1.0 (Clean Edition)
+// @name         Google SEO Traffic & Smart Bypass Engine
 // @namespace    http://tampermonkey.net/
-// @version      7.1.0
-// @description  Bypass SEO Google, mở Tab độc lập, chống trôi mã, Auto Click, Reload khi kẹt mã "0" & Nhập mã 1 lần duy nhất.
+// @version      1.0.0
+// @description  Tự động tìm kiếm Google, mở liên kết đích, bypass nút lấy mã SEO (Ontop, GTraffic, 1s...) và tự động điền mã xác nhận.
 // @author       MrDon & Assistant
 // @match        *://*.google.com/*
 // @match        *://*.google.com.vn/*
 // @match        *://google.com/*
 // @match        *://google.com.vn/*
 // @match        *://*/*
-// @include      *://*.google.*/*
-// @include      *://google.*/*
-// @include      http*://*/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
@@ -30,16 +27,19 @@
     const IS_GOOGLE = /(^|\.)google\./i.test(location.hostname);
     const CODE_STORAGE_KEY = 'auto_bypass_code';
     const TASK_KEY = 'seo_task';
-    const TASK_TIMEOUT = 10 * 60 * 1000;
+    const TASK_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút
 
-    const SEARCH_INTERVAL = 400;
-    const SEARCH_MAX_ATTEMPTS = 15;
-    const TARGET_INTERVAL = 200;
+    const CONFIG = {
+        SEARCH_DEBOUNCE_MS: 180,
+        SEARCH_MAX_PAGE_WAIT_MS: 6000,
+        TARGET_POLL_INTERVAL_MS: 250,
+        ZERO_CODE_CONFIRM_MS: 1500
+    };
 
     const BANNER_KEYWORDS = ['banner', 'popup', 'float', 'close', 'openbanner', 'ad_', 'advertisement', 'overlay'];
 
     // =============================================================
-    // 1. UTILS & HELPER FUNCTIONS
+    // 1. CÔNG CỤ XỬ LÝ & BỘ SO KHỚP URL
     // =============================================================
 
     function normalizeText(value) {
@@ -51,8 +51,7 @@
     }
 
     function normalizeDomain(value) {
-        let text = normalizeText(value);
-        return text
+        return normalizeText(value)
             .replace(/^(?:https?:\/\/)?(?:www\.)?/i, '')
             .split('/')[0]
             .split('?')[0]
@@ -74,7 +73,7 @@
         if (!clean) return [];
         return clean
             .split('/')
-            .flatMap(part => part.split(/[-_.~]+/).map(x => x.trim()).filter(Boolean))
+            .flatMap(segment => segment.split(/[-_.~]+/).map(x => x.trim()).filter(Boolean))
             .filter(token => token.length >= 2);
     }
 
@@ -92,7 +91,7 @@
         return current;
     }
 
-    function getRealTargetUrl(element) {
+    function extractTargetUrl(element) {
         if (!element) return '';
         let href = element.getAttribute('href') || element.href || '';
         if (!href) return '';
@@ -101,8 +100,7 @@
         try {
             if (href.includes('/url?') || href.includes('/url?q=') || href.includes('/url?sa=')) {
                 const queryIndex = href.indexOf('?');
-                const query = href.slice(queryIndex + 1);
-                const params = new URLSearchParams(query);
+                const params = new URLSearchParams(href.slice(queryIndex + 1));
                 href = params.get('q') || params.get('url') || params.get('u') || href;
                 href = decodeRepeated(href);
             }
@@ -135,136 +133,101 @@
                 tokens: getPathTokens(url.pathname)
             };
         } catch (_) {
-            const parts = value.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '').split('/');
+            const segments = value.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '').split('/');
             return {
                 original,
-                domain: normalizeDomain(parts.shift() || ''),
-                path: cleanPath(parts.join('/')),
-                tokens: getPathTokens(parts.join('/'))
+                domain: normalizeDomain(segments.shift() || ''),
+                path: cleanPath(segments.join('/')),
+                tokens: getPathTokens(segments.join('/'))
             };
         }
     }
 
-    function extractUrlParts(rawHref) {
-        try {
-            let value = decodeRepeated(rawHref);
-            if (!/^https?:\/\//i.test(value)) value = new URL(value, location.href).href;
-            const url = new URL(value);
-            return {
-                url: url.href,
-                domain: normalizeDomain(url.hostname),
-                path: cleanPath(url.pathname),
-                query: normalizeText(url.search),
-                hash: normalizeText(url.hash)
-            };
-        } catch (_) {
-            const text = normalizeText(rawHref);
-            return { url: text, domain: normalizeDomain(text), path: '', query: '', hash: '' };
-        }
-    }
-
-    function tokenMatchScore(targetTokens, candidateTokens) {
-        if (!targetTokens.length) return 0;
-        let matched = 0;
-        for (const targetToken of targetTokens) {
-            if (candidateTokens.some(ct => ct === targetToken)) {
-                matched += 1;
-            } else if (candidateTokens.some(ct => ct.includes(targetToken) || targetToken.includes(ct))) {
-                matched += 0.7;
-            }
-        }
-        return matched / targetTokens.length;
-    }
-
-    function sequenceScore(targetPath, candidatePath) {
-        if (!targetPath || !candidatePath) return 0;
-        const target = cleanPath(targetPath);
-        const candidate = cleanPath(candidatePath);
-        if (!target || !candidate) return 0;
-        if (candidate === target || candidate.includes(target)) return 1;
-
-        const targetParts = target.split('/');
-        const candidateParts = candidate.split('/');
-        let matched = 0;
-
-        for (const targetPart of targetParts) {
-            if (candidateParts.some(cp => cp === targetPart || cp.includes(targetPart) || targetPart.includes(cp))) {
-                matched++;
-            }
-        }
-        return matched / Math.max(targetParts.length, 1);
-    }
-
-    function getVisibleUrlText(link) {
-        if (!link) return '';
-        const parent = link.closest('div.MjjYud, div.tF2Cxc, div.g, div[data-snhf], div') || link.parentElement;
-        if (!parent) return '';
-        return normalizeText(parent.innerText || parent.textContent || '');
-    }
-
-    function getUrlMatchScore(element, userTarget) {
-        const href = getRealTargetUrl(element);
+    function scoreUrlMatch(element, userTarget) {
+        const href = extractTargetUrl(element);
         if (!href) return -Infinity;
 
+        let parsedCandidate;
+        try {
+            const urlObj = new URL(href.startsWith('http') ? href : new URL(href, location.href).href);
+            parsedCandidate = {
+                url: urlObj.href,
+                domain: normalizeDomain(urlObj.hostname),
+                path: cleanPath(urlObj.pathname)
+            };
+        } catch (_) {
+            const text = normalizeText(href);
+            parsedCandidate = { url: text, domain: normalizeDomain(text), path: '' };
+        }
+
+        if (parsedCandidate.url.includes('google.') || parsedCandidate.url.includes('/search')) {
+            return -100;
+        }
+
         const target = parseTargetInput(userTarget);
-        const candidate = extractUrlParts(href);
         const rawTargetClean = normalizeText(userTarget).replace(/^https?:\/\//i, '').replace(/^www\./i, '');
         let score = 0;
 
         if (rawTargetClean) {
-            if (candidate.domain.includes(rawTargetClean) || rawTargetClean.includes(candidate.domain)) score += 60;
-            if (candidate.url.includes(rawTargetClean)) score += 40;
+            if (parsedCandidate.domain.includes(rawTargetClean) || rawTargetClean.includes(parsedCandidate.domain)) score += 60;
+            if (parsedCandidate.url.includes(rawTargetClean)) score += 40;
         }
 
         if (target.domain) {
-            if (candidate.domain === target.domain) score += 100;
-            else if (candidate.domain.endsWith(`.${target.domain}`) || target.domain.endsWith(`.${candidate.domain}`)) score += 80;
-            else if (candidate.domain.includes(target.domain) || target.domain.includes(candidate.domain)) score += 40;
+            if (parsedCandidate.domain === target.domain) score += 100;
+            else if (parsedCandidate.domain.endsWith(`.${target.domain}`) || target.domain.endsWith(`.${parsedCandidate.domain}`)) score += 80;
+            else if (parsedCandidate.domain.includes(target.domain) || target.domain.includes(parsedCandidate.domain)) score += 40;
         }
 
-        if (target.path) {
-            const pathScore = sequenceScore(target.path, candidate.path);
-            const tokenScore = tokenMatchScore(target.tokens, getPathTokens(candidate.path));
-            score += pathScore * 50 + tokenScore * 30;
+        if (target.path && parsedCandidate.path) {
+            if (parsedCandidate.path === target.path || parsedCandidate.path.includes(target.path)) {
+                score += 60;
+            } else {
+                const targetTokens = target.tokens;
+                const candidateTokens = getPathTokens(parsedCandidate.path);
+                if (targetTokens.length && candidateTokens.length) {
+                    let matched = 0;
+                    for (const t of targetTokens) {
+                        if (candidateTokens.includes(t)) matched += 1;
+                        else if (candidateTokens.some(c => c.includes(t) || t.includes(c))) matched += 0.7;
+                    }
+                    score += (matched / targetTokens.length) * 40;
+                }
+            }
         }
 
-        const visibleText = getVisibleUrlText(element);
-        if (visibleText && rawTargetClean && visibleText.includes(rawTargetClean)) score += 30;
-        if (candidate.url.includes('google.') || candidate.url.includes('/search')) score -= 100;
+        const snippetContainer = element.closest('div.MjjYud, div.tF2Cxc, div.g, div[data-snhf]') || element.parentElement;
+        if (snippetContainer) {
+            const visibleText = normalizeText(snippetContainer.innerText || '');
+            if (rawTargetClean && visibleText.includes(rawTargetClean)) score += 30;
+        }
 
         return score;
     }
 
-    function findBestMatchingLink(userTarget) {
-        const links = document.querySelectorAll('a[href]');
+    function findBestMatchingResult(userTarget) {
+        const rootContainer = document.querySelector('#rso, #search, #center_col') || document.body;
+        if (!rootContainer) return null;
+
+        const links = rootContainer.querySelectorAll('a[href]');
         let best = null;
-        let bestScore = -Infinity;
+        let highestScore = 30;
 
         for (const link of links) {
             if (!link.isConnected) continue;
-            const href = getRealTargetUrl(link);
-            if (!href) continue;
-
-            const score = getUrlMatchScore(link, userTarget);
-            if (score > bestScore) {
-                bestScore = score;
-                best = { element: link, url: href, score };
+            const score = scoreUrlMatch(link, userTarget);
+            if (score > highestScore) {
+                highestScore = score;
+                best = { element: link, url: extractTargetUrl(link), score };
             }
         }
-
-        return (best && bestScore >= 30) ? best : null;
-    }
-
-    function isBlacklisted(str) {
-        if (!str) return false;
-        const value = normalizeText(str);
-        return BANNER_KEYWORDS.some(keyword => value.includes(keyword));
+        return best;
     }
 
     function getActiveTask() {
         const task = GM_getValue(TASK_KEY, null);
         if (!task) return null;
-        if (!task.timestamp || Date.now() - task.timestamp > TASK_TIMEOUT) {
+        if (!task.timestamp || Date.now() - task.timestamp > TASK_TIMEOUT_MS) {
             GM_deleteValue(TASK_KEY);
             return null;
         }
@@ -295,30 +258,35 @@
 
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
-        element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
     }
 
     function showToast(message, type = 'info') {
-        const toastBox = document.getElementById('mrdon-toast-container') || (() => {
-            const box = document.createElement('div');
-            box.id = 'mrdon-toast-container';
-            box.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:999999999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+        let box = document.getElementById('engine-toast-container');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'engine-toast-container';
+            box.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
             (document.body || document.documentElement).appendChild(box);
-            return box;
-        })();
+        }
 
         const toast = document.createElement('div');
-        const bgColor = type === 'err' ? '#f38ba8' : type === 'warn' ? '#f9e2af' : '#a6e3a1';
-        const textColor = '#11111b';
+        const palette = {
+            info: { bg: '#1e1e2e', text: '#a6e3a1', border: '#a6e3a1' },
+            warn: { bg: '#1e1e2e', text: '#f9e2af', border: '#f9e2af' },
+            err: { bg: '#1e1e2e', text: '#f38ba8', border: '#f38ba8' }
+        };
+        const currentStyle = palette[type] || palette.info;
 
         toast.style.cssText = `
-            background: ${bgColor}; color: ${textColor}; padding: 10px 14px;
-            border-radius: 8px; font-family: sans-serif; font-size: 12px; font-weight: bold;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; transform: translateY(10px);
-            transition: all 0.3s ease; pointer-events: auto;
+            background: ${currentStyle.bg}; color: ${currentStyle.text};
+            border: 1px solid ${currentStyle.border}; padding: 10px 16px;
+            border-radius: 8px; font-family: system-ui, -apple-system, sans-serif;
+            font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            opacity: 0; transform: translateY(12px); transition: all 0.25s ease-out;
+            pointer-events: auto;
         `;
         toast.textContent = message;
-        toastBox.appendChild(toast);
+        box.appendChild(toast);
 
         requestAnimationFrame(() => {
             toast.style.opacity = '1';
@@ -327,270 +295,240 @@
 
         setTimeout(() => {
             toast.style.opacity = '0';
-            toast.style.transform = 'translateY(10px)';
-            setTimeout(() => toast.remove(), 300);
-        }, 3500);
+            toast.style.transform = 'translateY(12px)';
+            setTimeout(() => toast.remove(), 250);
+        }, 3000);
     }
 
-    function executeAdvancedClick(element, gui) {
-        if (!element) return;
+    function executeClickSequence(element, gui) {
+        if (!element || !element.isConnected) return;
 
-        gui?.log('🎯 Tìm thấy nút lấy mã! Đang mở khóa và kích hoạt...', 'info');
+        gui?.log('🎯 Xác định nút hành động. Đang loại bỏ khóa và kích hoạt...', 'info');
 
         try {
             element.removeAttribute('disabled');
             element.style.pointerEvents = 'auto';
             element.style.cursor = 'pointer';
-            element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (_) {}
 
         setTimeout(() => {
             if (!element.isConnected) return;
             const rect = element.getBoundingClientRect();
-            if (!rect.width || !rect.height) return;
+            const clickX = Math.round(rect.left + Math.max(rect.width / 2, 5));
+            const clickY = Math.round(rect.top + Math.max(rect.height / 2, 5));
 
-            const clickX = Math.round(rect.left + rect.width / 2);
-            const clickY = Math.round(rect.top + rect.height / 2);
-
-            showClickIndicator(clickX, clickY);
-
-            const targets = [
+            const targetChain = [
                 element,
-                element.closest('a'),
-                element.closest('button'),
-                element.closest('[onclick]'),
+                element.closest('button, a, [onclick], input[type="button"]'),
                 element.parentElement
             ].filter(Boolean);
 
-            const uniqueTargets = [...new Set(targets)];
+            const uniqueChain = [...new Set(targetChain)];
 
-            uniqueTargets.forEach(tgt => {
-                try {
-                    const onclickAttr = tgt.getAttribute('onclick');
-                    if (onclickAttr) {
-                        if (typeof unsafeWindow !== 'undefined') unsafeWindow.eval(onclickAttr);
-                        else window.eval(onclickAttr);
-                    }
-                    const hrefAttr = tgt.getAttribute('href');
-                    if (hrefAttr && hrefAttr.startsWith('javascript:')) {
-                        const jsCode = hrefAttr.replace(/^javascript:/i, '');
-                        if (typeof unsafeWindow !== 'undefined') unsafeWindow.eval(jsCode);
-                        else window.eval(jsCode);
-                    }
-                } catch (e) {}
+            // Thực thi thuộc tính onclick hoặc liên kết javascript nếu có
+            uniqueChain.forEach(node => {
+                const onclickAttr = node.getAttribute('onclick');
+                if (onclickAttr) {
+                    try {
+                        const execWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+                        execWindow.eval(onclickAttr);
+                    } catch (_) {}
+                }
             });
 
-            try {
-                const jq = (typeof unsafeWindow !== 'undefined' ? unsafeWindow.$ || unsafeWindow.jQuery : null) || window.$ || window.jQuery;
-                if (jq) {
-                    uniqueTargets.forEach(tgt => { try { jq(tgt).trigger('click'); } catch (_) {} });
-                }
-            } catch (_) {}
-
-            const eventTypes = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
-            const eventOptions = {
-                bubbles: true, cancelable: true,
+            // Gửi chuỗi sự kiện click hoàn chỉnh
+            const eventPayload = {
+                bubbles: true,
+                cancelable: true,
                 view: typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
-                clientX: clickX, clientY: clickY, button: 0, buttons: 1
+                clientX: clickX,
+                clientY: clickY,
+                button: 0,
+                buttons: 1
             };
 
-            uniqueTargets.forEach(tgt => {
-                eventTypes.forEach(type => { try { tgt.dispatchEvent(new MouseEvent(type, eventOptions)); } catch (_) {} });
-                if (typeof tgt.click === 'function') { try { tgt.click(); } catch (_) {} }
+            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
+                const evt = new MouseEvent(evtType, eventPayload);
+                element.dispatchEvent(evt);
             });
 
+            if (typeof element.click === 'function') {
+                try { element.click(); } catch (_) {}
+            }
+
             clearTask();
-            gui?.log('✅ ĐÃ KÍCH HOẠT NÚT THÀNH CÔNG!', 'info');
-            showToast('🎯 Đã bấm nút lấy mã thành công!', 'info');
-        }, 500);
-    }
-
-    function showClickIndicator(x, y) {
-        const old = document.getElementById('mrdon-click-indicator');
-        old?.remove();
-
-        const dot = document.createElement('div');
-        dot.id = 'mrdon-click-indicator';
-        dot.style.cssText = `
-            position: fixed; top: ${y - 15}px; left: ${x - 15}px;
-            width: 30px; height: 30px; background: rgba(255,69,0,.9);
-            border: 3px solid #fff; border-radius: 50%; z-index: 999999999;
-            pointer-events: none; box-shadow: 0 0 20px #ff4500;
-        `;
-
-        (document.body || document.documentElement).appendChild(dot);
-        setTimeout(() => { try { dot.remove(); } catch (_) {} }, 2000);
+            gui?.log('✅ Đã kích hoạt sự kiện nhấn thành công!', 'info');
+            showToast('🎯 Đã bấm nút nhận mã thành công!', 'info');
+        }, 400);
     }
 
     // =============================================================
-    // 2. MAIN GUI INTERFACE
+    // 2. GIAO DIỆN ĐIỀU KHIỂN (GUI)
     // =============================================================
 
-    class MainGUI {
+    class ControlPanel {
         constructor() {
             this.container = null;
-            this.logConsole = null;
-            this.inputKeyword = null;
-            this.inputDomain = null;
+            this.logOutput = null;
+            this.keywordInput = null;
+            this.domainInput = null;
         }
 
-        init(callback) {
-            if (document.getElementById('mrdon-main-gui')) {
-                callback?.();
+        init(readyCallback) {
+            if (document.getElementById('engine-control-panel')) {
+                readyCallback?.();
                 return;
             }
 
-            const renderWhenReady = () => {
+            const checkDOM = () => {
                 if (!document.body && !document.documentElement) return;
-                clearInterval(waitTimer);
-                this.renderGUI();
-                callback?.();
+                clearInterval(checkTimer);
+                this.buildInterface();
+                readyCallback?.();
             };
 
-            const waitTimer = setInterval(renderWhenReady, 50);
-            renderWhenReady();
+            const checkTimer = setInterval(checkDOM, 40);
+            checkDOM();
         }
 
-        renderGUI() {
-            if (document.getElementById('mrdon-main-gui')) return;
+        buildInterface() {
+            if (document.getElementById('engine-control-panel')) return;
 
             this.container = document.createElement('div');
-            this.container.id = 'mrdon-main-gui';
+            this.container.id = 'engine-control-panel';
             this.container.style.cssText = `
-                position: fixed; top: 20px; right: 20px; width: 320px;
-                background: #181825; color: #cdd6f4; border: 2px solid #cba6f7;
-                border-radius: 12px; padding: 12px; font-family: sans-serif;
-                font-size: 12px; z-index: 99999999; box-shadow: 0 8px 24px rgba(0,0,0,.7);
-                user-select: none; display: none;
+                position: fixed; top: 20px; right: 20px; width: 330px;
+                background: #181825; color: #cdd6f4; border: 2px solid #89b4fa;
+                border-radius: 12px; padding: 14px; font-family: system-ui, -apple-system, sans-serif;
+                font-size: 12px; z-index: 2147483646; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+                user-select: none; display: none; box-sizing: border-box;
             `;
 
             const header = document.createElement('div');
-            header.style.cssText = 'font-weight: bold; color: #cba6f7; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: move;';
+            header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: move;';
 
             const title = document.createElement('span');
-            title.textContent = '⚡ SEO Bypass Engine v7.1';
+            title.style.cssText = 'font-weight: 700; color: #89b4fa; font-size: 13px;';
+            title.textContent = '⚡ SEO Traffic Engine v1.0.0';
 
-            const shortcut = document.createElement('span');
-            shortcut.style.cssText = 'font-size: 10px; color: #a6e3a1; background: #313244; padding: 2px 6px; border-radius: 4px;';
-            shortcut.textContent = 'Alt+Shift+G';
+            const hotkeyBadge = document.createElement('span');
+            hotkeyBadge.style.cssText = 'font-size: 10px; color: #11111b; background: #a6e3a1; padding: 2px 6px; border-radius: 4px; font-weight: 600;';
+            hotkeyBadge.textContent = 'Alt + Shift + G';
 
-            header.append(title, shortcut);
+            header.append(title, hotkeyBadge);
             this.container.appendChild(header);
 
-            this.inputKeyword = document.createElement('input');
-            this.inputKeyword.type = 'text';
-            this.inputKeyword.placeholder = 'Từ khóa Google...';
-            this.styleInput(this.inputKeyword);
-            this.container.appendChild(this.inputKeyword);
+            this.keywordInput = this.createStyledInput('Từ khóa tìm kiếm Google...');
+            this.container.appendChild(this.keywordInput);
 
-            this.inputDomain = document.createElement('input');
-            this.inputDomain.type = 'text';
-            this.inputDomain.placeholder = 'Link gần đúng / Domain đích...';
-            this.styleInput(this.inputDomain);
-            this.container.appendChild(this.inputDomain);
+            this.domainInput = this.createStyledInput('Tên miền / URL trang đích...');
+            this.container.appendChild(this.domainInput);
 
-            const btnGroup = document.createElement('div');
-            btnGroup.style.cssText = 'display: flex; gap: 6px; margin-bottom: 8px;';
+            const btnWrapper = document.createElement('div');
+            btnWrapper.style.cssText = 'display: flex; gap: 8px; margin-bottom: 10px;';
 
-            const startBtn = document.createElement('button');
-            startBtn.textContent = '▶ BẮT ĐẦU';
-            startBtn.style.cssText = 'flex: 1; background: #cba6f7; color: #11111b; border: none; padding: 8px; font-weight: bold; border-radius: 6px; cursor: pointer;';
+            const runBtn = document.createElement('button');
+            runBtn.textContent = '▶ Bắt Đầu';
+            runBtn.style.cssText = 'flex: 1; background: #89b4fa; color: #11111b; border: none; padding: 8px; font-weight: 700; border-radius: 6px; cursor: pointer;';
 
-            const resetBtn = document.createElement('button');
-            resetBtn.textContent = '🧹 XÓA TASK';
-            resetBtn.style.cssText = 'flex: 1; background: #f38ba8; color: #11111b; border: none; padding: 8px; font-weight: bold; border-radius: 6px; cursor: pointer;';
+            const clearBtn = document.createElement('button');
+            clearBtn.textContent = '🧹 Xóa Task';
+            clearBtn.style.cssText = 'flex: 1; background: #f38ba8; color: #11111b; border: none; padding: 8px; font-weight: 700; border-radius: 6px; cursor: pointer;';
 
-            btnGroup.append(startBtn, resetBtn);
-            this.container.appendChild(btnGroup);
+            btnWrapper.append(runBtn, clearBtn);
+            this.container.appendChild(btnWrapper);
 
-            this.logConsole = document.createElement('div');
-            this.logConsole.style.cssText = 'background: #11111b; border: 1px solid #313244; height: 110px; padding: 6px; overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-size: 11px;';
+            this.logOutput = document.createElement('div');
+            this.logOutput.style.cssText = 'background: #11111b; border: 1px solid #313244; height: 110px; padding: 8px; overflow-y: auto; color: #a6e3a1; border-radius: 6px; font-family: monospace; font-size: 11px;';
+            this.container.appendChild(this.logOutput);
 
-            this.container.appendChild(this.logConsole);
             (document.body || document.documentElement).appendChild(this.container);
 
-            this.makeDraggable(header);
+            this.bindDrag(header);
 
-            const task = getActiveTask();
-            if (task) {
-                this.inputKeyword.value = task.keyword || '';
-                this.inputDomain.value = task.domain || '';
-                this.log(`🔄 Task: [${task.domain}] - Mode: Auto Detect`, 'info');
+            const activeTask = getActiveTask();
+            if (activeTask) {
+                this.keywordInput.value = activeTask.keyword || '';
+                this.domainInput.value = activeTask.domain || '';
+                this.log(`🔄 Khôi phục phiên làm việc: [${activeTask.domain}]`, 'info');
             }
 
-            startBtn.addEventListener('click', () => {
-                const keyword = this.inputKeyword.value.trim();
-                const domain = this.inputDomain.value.trim();
+            runBtn.addEventListener('click', () => {
+                const keyword = this.keywordInput.value.trim();
+                const domain = this.domainInput.value.trim();
 
                 if (!keyword || !domain) {
-                    alert('Vui lòng nhập đầy đủ Từ Khóa và Link/Domain!');
+                    showToast('Vui lòng nhập cả từ khóa và link đích!', 'warn');
                     return;
                 }
 
-                const task = {
+                saveTask({
                     keyword,
                     domain,
                     originUrl: location.href,
                     step: 'SEARCHING',
-                    page: 1,
-                    timestamp: Date.now()
-                };
+                    page: 1
+                });
 
-                saveTask(task);
-                this.log(`🚀 Giữ Tab gốc. Mở Google tìm: ${domain}`, 'info');
-                showToast(`🔎 Đang tìm kiếm trên Google: ${keyword}`);
+                this.log(`🚀 Mở tab tìm kiếm Google: ${keyword}`, 'info');
+                showToast(`🔎 Đang tìm kiếm trên Google...`);
                 window.open(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, '_blank');
             });
 
-            resetBtn.addEventListener('click', () => {
+            clearBtn.addEventListener('click', () => {
                 clearTask();
-                this.inputKeyword.value = '';
-                this.inputDomain.value = '';
-                this.log('🧹 Đã dọn dẹp bộ nhớ!', 'warn');
-                showToast('🧹 Đã xóa thông tin Task!', 'warn');
+                this.keywordInput.value = '';
+                this.domainInput.value = '';
+                this.log('🧹 Đã dọn dẹp task lưu trữ.', 'warn');
+                showToast('🧹 Đã xóa task hiện tại.', 'warn');
             });
         }
 
-        styleInput(input) {
-            input.style.cssText = 'width: 100%; box-sizing: border-box; background: #313244; border: 1px solid #45475a; color: #cdd6f4; padding: 7px; border-radius: 6px; margin-bottom: 6px; outline: none; font-size: 12px;';
+        createStyledInput(placeholderText) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = placeholderText;
+            input.style.cssText = 'width: 100%; box-sizing: border-box; background: #313244; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; outline: none; font-size: 12px;';
+            return input;
         }
 
-        makeDraggable(header) {
-            let dragging = false;
-            let offsetX = 0, offsetY = 0;
+        bindDrag(dragHandle) {
+            let active = false;
+            let startX = 0, startY = 0;
 
-            header.addEventListener('mousedown', event => {
-                dragging = true;
+            dragHandle.addEventListener('mousedown', e => {
+                active = true;
                 const rect = this.container.getBoundingClientRect();
-                offsetX = event.clientX - rect.left;
-                offsetY = event.clientY - rect.top;
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
             });
 
-            document.addEventListener('mousemove', event => {
-                if (!dragging || !this.container) return;
-                this.container.style.left = `${event.clientX - offsetX}px`;
-                this.container.style.top = `${event.clientY - offsetY}px`;
+            document.addEventListener('mousemove', e => {
+                if (!active || !this.container) return;
+                this.container.style.left = `${e.clientX - startX}px`;
+                this.container.style.top = `${e.clientY - startY}px`;
                 this.container.style.right = 'auto';
             });
 
-            document.addEventListener('mouseup', () => { dragging = false; });
+            document.addEventListener('mouseup', () => { active = false; });
         }
 
         log(message, type = 'info') {
-            const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-            const logMsg = `[Bypass Tool ${time}] ${message}`;
+            const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+            const prefix = `[Engine ${now}] ${message}`;
 
-            if (type === 'err') console.error(`%c${logMsg}`, 'color: #f38ba8; font-weight: bold;');
-            else if (type === 'warn') console.warn(`%c${logMsg}`, 'color: #f9e2af; font-weight: bold;');
-            else console.log(`%c${logMsg}`, 'color: #a6e3a1; font-weight: bold;');
+            if (type === 'err') console.error(`%c${prefix}`, 'color:#f38ba8;font-weight:bold;');
+            else if (type === 'warn') console.warn(`%c${prefix}`, 'color:#f9e2af;font-weight:bold;');
+            else console.log(`%c${prefix}`, 'color:#a6e3a1;font-weight:bold;');
 
-            if (!this.logConsole) return;
-            const p = document.createElement('p');
-            p.style.margin = '2px 0';
-            p.style.color = type === 'err' ? '#f38ba8' : type === 'warn' ? '#f9e2af' : '#a6e3a1';
-            p.textContent = `[${time}] ${message}`;
-            this.logConsole.appendChild(p);
-            this.logConsole.scrollTop = this.logConsole.scrollHeight;
+            if (!this.logOutput) return;
+            const line = document.createElement('div');
+            line.style.margin = '2px 0';
+            line.style.color = type === 'err' ? '#f38ba8' : type === 'warn' ? '#f9e2af' : '#a6e3a1';
+            line.textContent = `[${now}] ${message}`;
+            this.logOutput.appendChild(line);
+            this.logOutput.scrollTop = this.logOutput.scrollHeight;
         }
 
         toggle() {
@@ -598,464 +536,421 @@
                 this.init();
                 return;
             }
-            const hidden = this.container.style.display === 'none';
-            this.container.style.display = hidden ? 'block' : 'none';
+            this.container.style.display = this.container.style.display === 'none' ? 'block' : 'none';
         }
     }
 
     // =============================================================
-    // 3. GOOGLE SEARCH HANDLER
+    // 3. ĐIỀU HƯỚNG TÌM KIẾM TRÊN GOOGLE
     // =============================================================
 
-    class GoogleSearchHandler {
-        static handle(task, gui) {
-            gui?.log(`🔍 Quét link mờ trùng khớp: "${task.domain}"...`, 'info');
+    class GoogleNavigator {
+        static run(task, gui) {
+            gui?.log(`🔍 Bắt đầu quét liên kết đích: "${task.domain}"...`, 'info');
 
-            let isProcessing = false;
+            let isFound = false;
             let observer = null;
-            let fallbackTimer = null;
+            let timeoutWatch = null;
+            let debounceTimer = null;
 
-            const cleanup = () => {
+            const stopSearching = () => {
                 if (observer) { observer.disconnect(); observer = null; }
-                if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
+                if (timeoutWatch) { clearTimeout(timeoutWatch); timeoutWatch = null; }
+                if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
             };
 
-            const scanGooglePage = () => {
-                if (isProcessing) return;
-                const result = findBestMatchingLink(task.domain);
-                if (!result) return;
+            const evaluateResults = () => {
+                if (isFound) return;
+                const match = findBestMatchingResult(task.domain);
+                if (!match) return;
 
-                isProcessing = true;
-                cleanup();
+                isFound = true;
+                stopSearching();
 
-                const { element, url, score } = result;
-                gui?.log(`✅ Chọn link (điểm ${score.toFixed(1)}): ${url}`, 'info');
-                showToast(`🎯 Tìm thấy trang web đích!`, 'info');
+                gui?.log(`✅ Chọn liên kết (Điểm: ${match.score.toFixed(1)}): ${match.url}`, 'info');
+                showToast(`🎯 Đã tìm thấy trang đích!`, 'info');
 
                 task.step = 'BYPASSING';
-                task.matchedUrl = url;
-                task.matchScore = score;
+                task.matchedUrl = match.url;
                 saveTask(task);
 
-                try { element.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+                try { match.element.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
 
                 setTimeout(() => {
-                    try { element.click(); } catch (_) {}
-                    setTimeout(() => { location.href = url; }, 500);
-                }, 500);
+                    try { match.element.click(); } catch (_) {}
+                    setTimeout(() => { location.href = match.url; }, 400);
+                }, 400);
             };
 
-            observer = new MutationObserver(scanGooglePage);
-            observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-            scanGooglePage();
+            const debouncedScan = () => {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(evaluateResults, CONFIG.SEARCH_DEBOUNCE_MS);
+            };
 
-            let attempts = 0;
-            fallbackTimer = setInterval(() => {
-                if (isProcessing) { cleanup(); return; }
-                attempts++;
-                scanGooglePage();
+            const targetContainer = document.querySelector('#rso, #search, #center_col') || document.body || document.documentElement;
+            observer = new MutationObserver(debouncedScan);
+            observer.observe(targetContainer, { childList: true, subtree: true });
 
-                if (attempts >= SEARCH_MAX_ATTEMPTS && !isProcessing) {
-                    cleanup();
-                    const nextBtn = document.querySelector('#pnnext, a[id="pnnext"], a[aria-label*="Next"], a[aria-label*="Trang sau"], [jsname="Te322e"]');
+            evaluateResults();
 
-                    if (!nextBtn) {
-                        gui?.log(`❌ Không tìm thấy link cho "${task.domain}".`, 'err');
-                        showToast(`❌ Không tìm thấy trang đích!`, 'err');
-                        return;
-                    }
+            // Nếu quá thời gian chờ mà chưa thấy ở trang 1 -> Chuyển trang kết quả tiếp theo
+            timeoutWatch = setTimeout(() => {
+                if (isFound) return;
+                stopSearching();
 
-                    task.page = Number(task.page || 1) + 1;
-                    task.step = 'SEARCHING';
-                    saveTask(task);
-
-                    gui?.log(`➡️ Sang trang Google ${task.page}...`, 'info');
-                    setTimeout(() => {
-                        try { nextBtn.click(); } catch (_) {}
-                        setTimeout(() => {
-                            if (location.href.includes('/search')) {
-                                GoogleSearchHandler.handle(getActiveTask() || task, gui);
-                            }
-                        }, 1200);
-                    }, 600);
-                }
-            }, SEARCH_INTERVAL);
-        }
-    }
-
-    // =============================================================
-    // 4. TARGET PAGE & INTERMEDIATE PAGE HANDLER
-    // =============================================================
-
-    class TargetPageHandler {
-        static handle(task, gui) {
-            gui?.log('🌐 Đang quét tự động nút lấy mã (Ontop, GTraffic, Traffic123, 1s.design...)...', 'info');
-
-            let attempts = 0;
-            let direction = 1;
-
-            TargetPageHandler.removeOverlayAds();
-
-            const timer = setInterval(() => {
-                attempts++;
-                const foundBtn = TargetPageHandler.scanNodeAllLayers();
-
-                if (foundBtn) {
-                    clearInterval(timer);
-                    executeAdvancedClick(foundBtn, gui);
+                const nextBtn = document.querySelector('#pnnext, a[id="pnnext"], a[aria-label*="Next"], a[aria-label*="Trang sau"], [jsname="Te322e"]');
+                if (!nextBtn) {
+                    gui?.log(`❌ Không tìm thấy trang web khớp với "${task.domain}".`, 'err');
+                    showToast(`❌ Không tìm thấy trang đích!`, 'err');
                     return;
                 }
 
-                if (attempts % 3 === 0) {
-                    const scrollStep = 350;
-                    const isAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 100);
-                    const isAtTop = window.scrollY <= 50;
+                task.page = Number(task.page || 1) + 1;
+                task.step = 'SEARCHING';
+                saveTask(task);
 
-                    if (isAtBottom && direction === 1) {
-                        gui?.log('📜 Đã cuộn xuống cuối trang, quay ngược lên...', 'warn');
-                        direction = -1;
-                    } else if (isAtTop && direction === -1) {
-                        direction = 1;
-                    }
+                gui?.log(`➡️ Đang chuyển sang trang Google ${task.page}...`, 'info');
+                nextBtn.click();
+            }, CONFIG.SEARCH_MAX_PAGE_WAIT_MS);
+        }
+    }
 
-                    window.scrollBy({ top: scrollStep * direction, behavior: 'smooth' });
+    // =============================================================
+    // 4. QUÉT NÚT BẤM & XỬ LÝ TRANG TRUNG GIAN
+    // =============================================================
+
+    class TargetPageHandler {
+        static run(task, gui) {
+            gui?.log('🌐 Đang tìm kiếm nút nhận mã SEO...', 'info');
+
+            let attempts = 0;
+            let scrollDirection = 1;
+
+            TargetPageHandler.cleanOverlays();
+
+            const pollInterval = setInterval(() => {
+                attempts++;
+                const targetBtn = TargetPageHandler.detectTrafficButton();
+
+                if (targetBtn) {
+                    clearInterval(pollInterval);
+                    executeClickSequence(targetBtn, gui);
+                    return;
                 }
-            }, TARGET_INTERVAL);
+
+                if (attempts % 4 === 0) {
+                    const atBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 80);
+                    const atTop = window.scrollY <= 40;
+
+                    if (atBottom && scrollDirection === 1) scrollDirection = -1;
+                    else if (atTop && scrollDirection === -1) scrollDirection = 1;
+
+                    window.scrollBy({ top: 320 * scrollDirection, behavior: 'smooth' });
+                }
+
+                if (attempts > 80) { // Dừng quét sau ~20 giây nếu không thấy
+                    clearInterval(pollInterval);
+                    gui?.log('⚠️ Đã hết thời gian tìm kiếm tự động nút bấm.', 'warn');
+                }
+            }, CONFIG.TARGET_POLL_INTERVAL_MS);
         }
 
-        static removeOverlayAds() {
+        static cleanOverlays() {
             try {
-                const overlays = document.querySelectorAll('div[class*="popup"], div[id*="popup"], div[class*="overlay"], div[id*="overlay"]');
-                overlays.forEach(el => {
-                    const style = window.getComputedStyle(el);
-                    if (style.position === 'fixed' || style.position === 'absolute') {
-                        if (parseInt(style.zIndex) > 1000) {
-                            el.remove();
-                        }
+                const candidates = document.querySelectorAll('div[class*="popup"], div[id*="popup"], div[class*="overlay"], div[id*="overlay"]');
+                candidates.forEach(node => {
+                    const style = window.getComputedStyle(node);
+                    if ((style.position === 'fixed' || style.position === 'absolute') && parseInt(style.zIndex, 10) > 5000) {
+                        const hasFormOrBtn = node.querySelector('button, input, a');
+                        if (!hasFormOrBtn) node.remove();
                     }
                 });
             } catch (_) {}
         }
 
-        static scanNodeAllLayers() {
-            const allImgSelectors = [
-                '#trade-d-btn', '#trade-d-btn__arrow', '#trade-d-btn__content',
-                'svg#avt-btn', '#avt-btn', '[id="avt-btn"]',
-                'rect[fill*="pattern0_647_11"]', 'img[src*="play"]', 'img[src*="red"]',
-                'img[src*="button"]', 'img[src*="layma"]', 'img[src*="traffic"]',
-                'img[src*="code"]', 'img[alt*="mã"]', 'img[alt*="code"]',
-                '#traffic-button-no__arrow img', '#traffic-button-no__arrow',
-                'a[id*="traffic"] img', 'div[id*="traffic"] img'
+        static detectTrafficButton() {
+            // 1. Quét theo các ID và Selector nút bấm chuyên dụng
+            const prioritySelectors = [
+                '#trade-d-btn', '#trade-d-btn__content', '#trade-d-btn__arrow',
+                '#avt-btn', 'svg#avt-btn', '[id="avt-btn"]',
+                '#traffic-button-no__arrow', '.traffic-button__content',
+                '#btn-lay-ma', '.btn-lay-ma', '#getcode', '.getcode',
+                '[id*="layma"]', '[class*="layma"]', '[id*="1sdesign"]'
             ];
 
-            for (const sel of allImgSelectors) {
-                try {
-                    const imgs = document.querySelectorAll(sel);
-                    for (const img of imgs) {
-                        const rect = img.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0) return img;
-                    }
-                } catch (_) {}
-            }
-
-            const textKeywords = [
-                /lấy\s*mã/i, /get\s*code/i, /mã\s*xác\s*nhận/i,
-                /lấy\s*pass/i, /xem\s*mã/i, /click\s*để\s*lấy/i, /bấm\s*lấy\s*mã/i
-            ];
-
-            const elements = document.querySelectorAll('button, a, div, span, p, input[type="button"], input[type="submit"], img, rect, svg');
-
-            for (const el of elements) {
-                const rect = el.getBoundingClientRect();
-                if (rect.width <= 0 || rect.height <= 0) continue;
-
-                const text = (el.innerText || el.value || el.getAttribute('alt') || el.getAttribute('title') || '').trim();
-
-                if (text && text.length < 50 && textKeywords.some(regex => regex.test(text))) {
-                    const onclick = el.getAttribute('onclick') || '';
-                    if (!isBlacklisted(onclick)) {
-                        const childImg = el.querySelector('img, svg, rect');
-                        return childImg || el;
-                    }
+            for (const selector of prioritySelectors) {
+                const node = document.querySelector(selector);
+                if (node) {
+                    const rect = node.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) return node;
                 }
             }
 
-            const allSelectors = [
-                '#trade-d-btn', '#avt-btn', 'svg#avt-btn',
-                '#traffic-button-no__arrow', '.traffic-button__content', '[class*="layma"]',
-                '[id*="layma"]', '[class*="l4m"]', '[id*="l4m"]', 'button[class*="traffic"]',
-                'a[class*="traffic"]', 'div[class*="traffic"]', '#btn-lay-ma', '.btn-lay-ma',
-                '#getcode', '.getcode', '[id*="1sdesign"]', '[class*="1sdesign"]'
+            // 2. Quét thẻ hình ảnh chứa thuộc tính nhận diện nút bấm
+            const imgSelectors = [
+                'img[src*="layma"]', 'img[src*="traffic"]', 'img[src*="getcode"]',
+                'img[src*="button"]', 'img[alt*="mã" i]', 'img[alt*="code" i]'
             ];
-
-            for (const selector of allSelectors) {
-                try {
-                    const elements = document.querySelectorAll(selector);
-                    for (const el of elements) {
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width <= 0 || rect.height <= 0) continue;
-                        const onclick = el.getAttribute('onclick') || '';
-                        if (!isBlacklisted(onclick)) return el;
-                    }
-                } catch (_) {}
+            for (const selector of imgSelectors) {
+                const img = document.querySelector(selector);
+                if (img) {
+                    const rect = img.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) return img;
+                }
             }
 
+            // 3. Quét theo văn bản nội dung của nút
+            const textKeywords = [/lấy\s*mã/i, /get\s*code/i, /mã\s*xác\s*nhận/i, /lấy\s*pass/i, /bấm\s*lấy\s*mã/i];
+            const candidateElements = document.querySelectorAll('button, a, div[role="button"]');
+
+            for (const el of candidateElements) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) continue;
+
+                const text = (el.innerText || el.textContent || '').trim();
+                if (text && text.length < 40 && textKeywords.some(rx => rx.test(text))) {
+                    const onclick = el.getAttribute('onclick') || '';
+                    if (!BANNER_KEYWORDS.some(k => onclick.toLowerCase().includes(k))) {
+                        return el;
+                    }
+                }
+            }
             return null;
         }
 
         static handleIntermediateBypass(gui) {
-            const checkAndBypass = () => {
-                const targetLink = document.querySelector('a[href*="activate_link"], a[href*="type=verify"], a[href*="realkidkey.site/api"], a[href*="verify"]');
-                if (targetLink) {
-                    const realHref = targetLink.getAttribute('href') || targetLink.href;
+            let runs = 0;
+            const checkTimer = setInterval(() => {
+                runs++;
+                const verifyLink = document.querySelector('a[href*="activate_link"], a[href*="type=verify"], a[href*="realkidkey.site/api"], a[href*="verify"]');
+                if (verifyLink) {
+                    const realHref = verifyLink.getAttribute('href') || verifyLink.href;
                     if (realHref && realHref.startsWith('http')) {
-                        gui?.log(`🚀 Tự động kích hoạt Link đếm ngược 0s: ${realHref}`, 'info');
+                        clearInterval(checkTimer);
+                        gui?.log(`🚀 Tự động chuyển hướng link xác minh: ${realHref}`, 'info');
                         location.href = realHref;
-                        return true;
+                        return;
                     }
                 }
 
-                const links = document.querySelectorAll('a, button');
-                for (const el of links) {
+                const actionLinks = document.querySelectorAll('a, button');
+                for (const el of actionLinks) {
                     const text = (el.innerText || el.textContent || '').trim();
-                    if (/^lấy\s*link$/i.test(text) || /lấy\s*link/i.test(text) || /get\s*link/i.test(text)) {
+                    if (/^lấy\s*link$/i.test(text) \vert{}\vert{} /^get\s*link$/i.test(text)) {
+                        clearInterval(checkTimer);
                         gui?.log('⚡ Tìm thấy nút "Lấy link", kích hoạt ngay...', 'info');
                         el.removeAttribute('disabled');
-                        el.style.pointerEvents = 'auto';
-                        el.style.display = 'flex';
-
                         if (el.href && el.href.startsWith('http')) {
                             location.href = el.href;
                         } else {
                             el.click();
                         }
-                        return true;
+                        return;
                     }
                 }
-                return false;
-            };
 
-            const fastTimer = setInterval(() => {
-                if (checkAndBypass()) clearInterval(fastTimer);
-            }, 100);
+                if (runs > 40) clearInterval(checkTimer);
+            }, 250);
         }
 
-        static startCodeExtraction(gui) {
-            let extracted = false;
-            let zeroErrorTimer = null;
+        static monitorCodeExtraction(gui) {
+            let isExtracted = false;
+            let zeroStallTimer = null;
 
-            const isCodeValid = (text) => {
-                if (!text) return false;
-                const clean = text.trim();
-                if (clean.length < 4 || clean.length > 35) return false;
+            const isValidCode = (raw) => {
+                if (!raw) return false;
+                const text = raw.trim();
+                if (text.length < 4 || text.length > 40) return false;
 
-                if (/^\d+$/.test(clean)) {
-                    const num = parseInt(clean, 10);
-                    if (num <= 120) return false;
+                if (/^\d+$/.test(text)) {
+                    const num = parseInt(text, 10);
+                    if (num <= 180) return false; // Tránh nhầm với số giây đếm ngược
                 }
 
-                if (/^(code|get code|mã code|pass|password|lấy mã|lay ma|wait|loading|click|xem mã)$/i.test(clean)) return false;
-                if (/lấy mã|chờ|wait|click|vui lòng|giây|seconds|download|chờ duyệt|bấm vào/i.test(clean)) return false;
+                if (/^(code|get code|mã code|pass|loading|wait|chờ|giây|seconds)$/i.test(text)) return false;
+                if (/lấy mã|vui lòng|chờ duyệt|download/i.test(text)) return false;
                 return true;
             };
 
-            const checkAndExtract = () => {
-                if (extracted) return;
+            const extractCodeFromDOM = () => {
+                if (isExtracted) return;
 
-                const codeElements = document.querySelectorAll(
-                    '#trade-d-btn__content, .trade-d-btn__content.copy-allowed, .trade-d-btn__content, ' +
-                    '.trade-btn-clf__content.copy-allowed, .trade-btn-clf__content, .traffic-button__content.copy-allowed, ' +
-                    '.traffic-button__content, .copy-allowed span, .copy-allowed'
+                const codeNodes = document.querySelectorAll(
+                    '#trade-d-btn__content, .trade-d-btn__content, .trade-btn-clf__content, .traffic-button__content, .copy-allowed'
                 );
 
-                for (const el of codeElements) {
-                    const val = (el.textContent || el.innerText || '').trim();
+                for (const node of codeNodes) {
+                    const val = (node.textContent || node.innerText || '').trim();
 
                     if (val === '0') {
-                        if (!zeroErrorTimer) {
-                            gui?.log('⚠️ Phát hiện mã bị kẹt bằng "0". Chờ 1.5s xác nhận trước khi Reload...', 'warn');
-                            zeroErrorTimer = setTimeout(() => {
-                                const reCheckVal = (el.textContent || el.innerText || '').trim();
-                                if (reCheckVal === '0') {
-                                    extracted = true;
-                                    gui?.log('🔄 Mã bị lỗi "0"! Đang tự động Reload trang...', 'err');
-                                    showToast('🔄 Mã bị kẹt 0s, đang tải lại trang...', 'err');
+                        if (!zeroStallTimer) {
+                            gui?.log('⚠️ Phát hiện đếm ngược kẹt tại "0". Đang kiểm tra để reload...', 'warn');
+                            zeroStallTimer = setTimeout(() => {
+                                const reCheck = (node.textContent || node.innerText || '').trim();
+                                if (reCheck === '0') {
+                                    isExtracted = true;
+                                    gui?.log('🔄 Mã bị lỗi 0s, tải lại trang...', 'err');
+                                    showToast('🔄 Mã bị kẹt 0s, đang reload trang...', 'err');
                                     location.reload();
                                 } else {
-                                    zeroErrorTimer = null;
+                                    zeroStallTimer = null;
                                 }
-                            }, 1500);
+                            }, CONFIG.ZERO_CODE_CONFIRM_MS);
                         }
-                    } else if (val !== '0' && zeroErrorTimer) {
-                        clearTimeout(zeroErrorTimer);
-                        zeroErrorTimer = null;
+                    } else if (val !== '0' && zeroStallTimer) {
+                        clearTimeout(zeroStallTimer);
+                        zeroStallTimer = null;
                     }
 
-                    if (isCodeValid(val)) {
-                        if (zeroErrorTimer) clearTimeout(zeroErrorTimer);
-                        extracted = true;
-                        gui?.log(`🎉 BẮT ĐƯỢC MÃ THẬT: [${val}]`, 'info');
-                        showToast(`🎉 Đã bắt được mã: ${val}`, 'info');
+                    if (isValidCode(val)) {
+                        if (zeroStallTimer) clearTimeout(zeroStallTimer);
+                        isExtracted = true;
+
+                        gui?.log(`🎉 ĐÃ BẮT ĐƯỢC MÃ: [${val}]`, 'info');
+                        showToast(`🎉 Bắt được mã: ${val}`, 'info');
 
                         GM_setValue(CODE_STORAGE_KEY, val);
 
                         try {
                             GM_setClipboard(val);
-                            gui?.log('📋 Đã copy mã vào Clipboard!', 'info');
+                            gui?.log('📋 Đã sao chép mã vào Clipboard.', 'info');
                         } catch (_) {}
 
-                        document.title = `✅ [ĐÃ COPY MÃ: ${val}] - ${document.title}`;
+                        document.title = `✅ [MÃ: ${val}] - ${document.title}`;
 
-                        gui?.log('🚪 Đã lấy xong mã! Tự động tắt Tab...', 'info');
-                        setTimeout(() => { try { window.close(); } catch (_) {} }, 600);
+                        setTimeout(() => {
+                            gui?.log('🚪 Hoàn tất! Đang đóng tab...', 'info');
+                            try { window.close(); } catch (_) {}
+                        }, 800);
                         break;
                     }
                 }
             };
 
-            const intervalId = setInterval(() => {
-                if (extracted) { clearInterval(intervalId); return; }
-                checkAndExtract();
-            }, 200);
-
             const observer = new MutationObserver(() => {
-                checkAndExtract();
-                if (extracted) observer.disconnect();
+                extractCodeFromDOM();
+                if (isExtracted) observer.disconnect();
             });
 
             observer.observe(document.body || document.documentElement, {
                 childList: true, subtree: true, characterData: true
             });
+
+            extractCodeFromDOM();
         }
     }
 
     // =============================================================
-    // 5. TỰ ĐỘNG DÁN MÃ VÀO TRANG ĐÍCH (SINGLE SUBMIT LOCK)
+    // 5. TỰ ĐỘNG NHẬP MÃ XÁC NHẬN VÀ GỬI (CHÍNH XÁC CAO)
     // =============================================================
 
-    function handleAutoFillAndSubmit(gui) {
-        let isSubmitted = false;
+    function setupAutoFillListener(gui) {
+        let submitted = false;
 
-        const trySubmitCode = (savedCode) => {
-            if (!savedCode || isSubmitted) return;
+        const attemptSubmit = (codeToFill) => {
+            if (!codeToFill || submitted) return;
 
-            let watchdogTimer = null;
-            let attempts = 0;
-
-            const executeFillAndWatch = () => {
-                if (document.readyState !== 'complete') {
-                    setTimeout(executeFillAndWatch, 400);
+            let checkCount = 0;
+            const submitWatcher = setInterval(() => {
+                checkCount++;
+                if (submitted || checkCount > 30) {
+                    clearInterval(submitWatcher);
+                    if (checkCount > 30) GM_deleteValue(CODE_STORAGE_KEY);
                     return;
                 }
 
-                setTimeout(() => {
-                    const fillAndCheck = () => {
-                        if (isSubmitted) return true;
+                // Bộ chọn có chủ đích cho các form nhập mã xác nhận SEO Traffic
+                const inputElement = document.querySelector(
+                    'input[placeholder*="Nhập mã" i], input[placeholder*="xác nhận" i], input[placeholder*="code" i], ' +
+                    'input[id*="code" i], input[name*="code" i], input[id*="token" i], main#scroller input[type="text"]'
+                );
 
-                        const inputEl = document.querySelector(
-                            'input[placeholder*="Nhập mã xác nhận"], main#scroller input[type="text"], input[placeholder*="mã"], input[type="text"]'
-                        );
-                        if (!inputEl) return false;
+                if (!inputElement) return;
 
-                        if (inputEl.value !== savedCode) {
-                            gui?.log(`⚡ Tiến hành điền mã vào ô: [${savedCode}]`, 'info');
-                            showToast(`⚡ Đang điền mã: ${savedCode}`);
-                            inputEl.focus();
-                            setNativeValue(inputEl, savedCode);
-                        }
+                if (inputElement.value !== codeToFill) {
+                    gui?.log(`⚡ Đang điền mã xác nhận: [${codeToFill}]`, 'info');
+                    showToast(`⚡ Đang điền mã: ${codeToFill}`);
+                    inputElement.focus();
+                    setNativeValue(inputElement, codeToFill);
+                }
 
-                        const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
-                        const submitBtn = buttons.find(btn =>
-                            /nhập mã|gửi|submit|xác nhận|nhập mã xác nhận/i.test(btn.textContent || btn.value) ||
-                            btn.querySelector('.tabler-icon-brand-telegram')
-                        );
+                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+                const submitButton = buttons.find(btn =>
+                    /nhập mã|xác nhận|gửi|submit|tiếp tục/i.test(btn.textContent || btn.value || '') ||
+                    btn.querySelector('.tabler-icon-brand-telegram')
+                );
 
-                        if (submitBtn) {
-                            isSubmitted = true;
-                            if (watchdogTimer) clearInterval(watchdogTimer);
+                if (submitButton) {
+                    submitted = true;
+                    clearInterval(submitWatcher);
 
-                            submitBtn.removeAttribute('disabled');
-                            submitBtn.disabled = false;
-                            submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                    submitButton.removeAttribute('disabled');
+                    submitButton.disabled = false;
+                    submitButton.classList.remove('opacity-70', 'cursor-not-allowed');
 
-                            gui?.log('🚀 Đang gửi mã (Xác nhận 1 lần duy nhất)...', 'info');
-                            showToast('🚀 Đã kích hoạt gửi mã!', 'info');
+                    gui?.log('🚀 Đang gửi mã xác thực...', 'info');
+                    showToast('🚀 Đã gửi mã thành công!', 'info');
 
-                            GM_deleteValue(CODE_STORAGE_KEY);
+                    GM_deleteValue(CODE_STORAGE_KEY);
 
-                            setTimeout(() => {
-                                try { submitBtn.click(); } catch (_) {}
-                            }, 200);
-
-                            return true;
-                        }
-                        return false;
-                    };
-
-                    if (fillAndCheck()) return;
-
-                    watchdogTimer = setInterval(() => {
-                        attempts++;
-                        if (fillAndCheck() || attempts > 20 || isSubmitted) {
-                            clearInterval(watchdogTimer);
-                            if (attempts > 20) GM_deleteValue(CODE_STORAGE_KEY);
-                        }
-                    }, 400);
-
-                }, 800);
-            };
-
-            executeFillAndWatch();
+                    setTimeout(() => {
+                        try { submitButton.click(); } catch (_) {}
+                    }, 200);
+                }
+            }, 300);
         };
 
         const existingCode = GM_getValue(CODE_STORAGE_KEY, null);
-        if (existingCode) trySubmitCode(existingCode);
+        if (existingCode) attemptSubmit(existingCode);
 
         try {
-            GM_addValueChangeListener(CODE_STORAGE_KEY, (name, oldValue, newValue, remote) => {
-                if (newValue && !isSubmitted) {
-                    gui?.log(`🔔 Nhận mã realtime: [${newValue}]`, 'info');
-                    trySubmitCode(newValue);
+            GM_addValueChangeListener(CODE_STORAGE_KEY, (_, __, newCode) => {
+                if (newCode && !submitted) {
+                    gui?.log(`🔔 Nhận mã từ tab khác: [${newCode}]`, 'info');
+                    attemptSubmit(newCode);
                 }
             });
         } catch (_) {}
     }
 
     // =============================================================
-    // 6. MAIN ENTRY POINT
+    // 6. KHỞI TẠO ĐIỂM VÀO SCRIPT
     // =============================================================
 
-    function main() {
-        const gui = new MainGUI();
+    function initEngine() {
+        const gui = new ControlPanel();
+
         gui.init(() => {
-            window.addEventListener('keydown', event => {
-                if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'g') {
-                    event.preventDefault();
+            window.addEventListener('keydown', e => {
+                if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'g') {
+                    e.preventDefault();
                     gui.toggle();
                 }
             });
 
-            handleAutoFillAndSubmit(gui);
+            // Lắng nghe và nạp mã xác nhận nếu có mã được gửi tới
+            setupAutoFillListener(gui);
 
+            // Các trang ngoài Google sẽ hỗ trợ bypass và trích xuất mã
             if (!IS_GOOGLE) {
-                TargetPageHandler.startCodeExtraction(gui);
+                TargetPageHandler.monitorCodeExtraction(gui);
                 TargetPageHandler.handleIntermediateBypass(gui);
             }
 
-            const task = getActiveTask();
-            if (!task?.domain) return;
+            const currentTask = getActiveTask();
+            if (!currentTask?.domain) return;
 
-            if (IS_GOOGLE && task.step === 'SEARCHING') {
-                GoogleSearchHandler.handle(task, gui);
+            if (IS_GOOGLE && currentTask.step === 'SEARCHING') {
+                GoogleNavigator.run(currentTask, gui);
                 return;
             }
 
-            if (!IS_GOOGLE && task.step === 'BYPASSING') {
-                TargetPageHandler.handle(task, gui);
+            if (!IS_GOOGLE && currentTask.step === 'BYPASSING') {
+                TargetPageHandler.run(currentTask, gui);
             }
         });
     }
 
-    main();
+    initEngine();
 
 })();
